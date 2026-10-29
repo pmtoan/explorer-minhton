@@ -29,11 +29,16 @@ export const App: React.FC = () => {
               🛵
             </div>
             <div>
-              <h1 className="font-extrabold text-sm text-slate-800 tracking-tight leading-tight">
-                Explorer Minhton
-              </h1>
+              <div className="flex items-center gap-1.5">
+                <h1 className="font-extrabold text-sm text-slate-800 tracking-tight leading-tight">
+                  Explorer Minton
+                </h1>
+                <span className="px-1.5 py-0.2 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                  v1.0.3
+                </span>
+              </div>
               <p className="text-[11px] text-slate-400 font-medium">
-                Nhật ký phượt & Cafe có gu
+                Tác giả: Minton • Nhật ký phượt & Cafe
               </p>
             </div>
           </div>

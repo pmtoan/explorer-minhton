@@ -97,9 +97,9 @@ export const SettingsView: React.FC = () => {
         <div className="pt-1 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-50">
           <span className="flex items-center gap-1">
             <Info className="w-3.5 h-3.5" />
-            <span>Phiên bản v4.0.0 (Personal Edition)</span>
+            <span>Phiên bản v1.0.3 (Build 2026.10.29)</span>
           </span>
-          <span className="font-bold text-emerald-600">Minh Tôn Special</span>
+          <span className="font-bold text-emerald-600">Tác giả: Minton</span>
         </div>
       </div>
     </div>

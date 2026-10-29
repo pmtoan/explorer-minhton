@@ -11,7 +11,6 @@ import {
   AlertCircle,
   LogOut,
   HelpCircle,
-  Sparkles,
 } from 'lucide-react';
 
 interface GoogleDriveSyncCardProps {
@@ -39,7 +38,7 @@ export const GoogleDriveSyncCard: React.FC<GoogleDriveSyncCardProps> = ({ onSync
   const handleSignInGoogle = async () => {
     if (!clientIdInput.trim()) {
       setShowSetupGuide(true);
-      alert('Vui lòng nhập Google OAuth Client ID của bạn để kết nối với Google Drive.');
+      alert('⚠️ Bạn chưa nhập Google OAuth Client ID! Vui lòng làm theo hướng dẫn 3 bước để lấy Client ID từ Google Cloud Console.');
       return;
     }
 
@@ -47,27 +46,18 @@ export const GoogleDriveSyncCard: React.FC<GoogleDriveSyncCardProps> = ({ onSync
     try {
       await googleDriveSyncService.requestGoogleAuth(clientIdInput.trim());
       setConfig(storageService.getGoogleDriveConfig());
+      // Trigger sync immediately upon successful auth
       await googleDriveSyncService.syncWithDrive();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Lỗi kết nối Google';
-      alert(`Không thể kết nối Google: ${msg}`);
-    } finally {
-      setIsAuthorizing(false);
-    }
-  };
-
-  const handleTestSimulateSync = async () => {
-    setIsAuthorizing(true);
-    try {
-      await googleDriveSyncService.simulateTestCloudSync('pmtoan.explorer@gmail.com');
-      setConfig(storageService.getGoogleDriveConfig());
+      const msg = err instanceof Error ? err.message : 'Lỗi kết nối Google Drive';
+      alert(`❌ Không thể kết nối: ${msg}`);
     } finally {
       setIsAuthorizing(false);
     }
   };
 
   const handleDisconnect = () => {
-    if (confirm('Bạn có chắc chắn muốn ngắt kết nối tài khoản này?')) {
+    if (confirm('Bạn có chắc chắn muốn ngắt kết nối tài khoản Google Drive này?')) {
       googleDriveSyncService.disconnectGoogle();
       setConfig(storageService.getGoogleDriveConfig());
     }
@@ -75,7 +65,7 @@ export const GoogleDriveSyncCard: React.FC<GoogleDriveSyncCardProps> = ({ onSync
 
   const handleSyncNow = async () => {
     if (!config.accessToken) {
-      await handleSignInGoogle();
+      alert('❌ Chưa kết nối tài khoản Google Drive! Vui lòng nhập Client ID và bấm Đăng nhập để cấp quyền trước khi đồng bộ.');
       return;
     }
 
@@ -83,7 +73,7 @@ export const GoogleDriveSyncCard: React.FC<GoogleDriveSyncCardProps> = ({ onSync
       await googleDriveSyncService.syncWithDrive();
       setConfig(storageService.getGoogleDriveConfig());
     } catch {
-      // Status listener updates error
+      // Status listener updates error message
     }
   };
 
@@ -97,11 +87,11 @@ export const GoogleDriveSyncCard: React.FC<GoogleDriveSyncCardProps> = ({ onSync
 
     try {
       await googleDriveSyncService.importBackupJson(file);
-      alert('Khôi phục dữ liệu từ file JSON thành công!');
+      alert('✅ Khôi phục dữ liệu từ file JSON thành công!');
       if (onSyncComplete) onSyncComplete();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Lỗi khi nhập file';
-      alert(`Không thể nhập dữ liệu: ${msg}`);
+      alert(`❌ Không thể nhập dữ liệu: ${msg}`);
     } finally {
       e.target.value = '';
     }
@@ -120,7 +110,7 @@ export const GoogleDriveSyncCard: React.FC<GoogleDriveSyncCardProps> = ({ onSync
           <div>
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600">
-                Gói Google Drive 2TB
+                Google Drive REST API v3
               </span>
               <span
                 className={`w-2 h-2 rounded-full ${
@@ -129,7 +119,7 @@ export const GoogleDriveSyncCard: React.FC<GoogleDriveSyncCardProps> = ({ onSync
               />
             </div>
             <h3 className="font-extrabold text-sm text-slate-800">
-              Đồng bộ Đám mây Cá nhân
+              Đồng bộ Đám mây Google Drive
             </h3>
           </div>
         </div>
@@ -147,7 +137,7 @@ export const GoogleDriveSyncCard: React.FC<GoogleDriveSyncCardProps> = ({ onSync
       </div>
 
       <p className="text-xs text-slate-500 leading-relaxed">
-        Tự động gộp 2 chiều (Two-Way Merge) nhật ký phượt và quán ruột giữa các thiết bị mà không lo thất lạc dữ liệu.
+        Tự động gộp 2 chiều (Two-Way Merge) nhật ký phượt và quán ruột giữa các thiết bị thông qua tài khoản Google Drive cá nhân của bạn.
       </p>
 
       {/* Sync Status Banner */}
@@ -179,10 +169,10 @@ export const GoogleDriveSyncCard: React.FC<GoogleDriveSyncCardProps> = ({ onSync
         <div className="bg-emerald-50/70 p-3.5 rounded-2xl border border-emerald-200/80 space-y-1">
           <div className="text-[11px] font-bold text-emerald-800 flex items-center gap-1.5">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Đã kết nối tài khoản Đám mây:</span>
+            <span>Đã kết nối tài khoản Google Drive:</span>
           </div>
           <div className="text-xs font-bold text-slate-800 break-all pl-5">
-            {config.userEmail || 'pmtoan.explorer@gmail.com'}
+            {config.userEmail || 'Tài khoản Google đã xác thực'}
           </div>
           {config.lastSyncTime && (
             <div className="text-[10px] text-slate-500 pl-5 pt-0.5">
@@ -198,13 +188,13 @@ export const GoogleDriveSyncCard: React.FC<GoogleDriveSyncCardProps> = ({ onSync
       ) : (
         <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-slate-700">Google OAuth Client ID</span>
+            <span className="font-bold text-slate-700">Google OAuth 2.0 Client ID</span>
             <button
               onClick={() => setShowSetupGuide(!showSetupGuide)}
               className="text-emerald-600 hover:text-emerald-700 font-semibold flex items-center gap-1 text-[11px]"
             >
               <HelpCircle className="w-3.5 h-3.5" />
-              <span>Tại sao cần Client ID?</span>
+              <span>Cách lấy Client ID</span>
             </button>
           </div>
 
@@ -212,29 +202,29 @@ export const GoogleDriveSyncCard: React.FC<GoogleDriveSyncCardProps> = ({ onSync
             type="text"
             value={clientIdInput}
             onChange={(e) => setClientIdInput(e.target.value)}
-            placeholder="Dán mã Client ID từ Google Cloud Console vào đây"
-            className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            placeholder="Dán mã Client ID (ví dụ: xxxxx.apps.googleusercontent.com)"
+            className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
           />
 
           {showSetupGuide && (
-            <div className="p-3 rounded-xl bg-amber-50/90 border border-amber-200 text-xs text-amber-900 space-y-1.5 animate-in fade-in">
-              <div className="font-bold text-amber-800">
-                ⚡ Để tránh lỗi "401: invalid_client" của Google:
+            <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200 text-xs text-amber-900 space-y-1.5 animate-in fade-in">
+              <div className="font-bold text-amber-900">
+                ⚡ 3 Bước lấy Client ID chính thức từ Google (Miễn phí):
               </div>
               <p className="text-[11px] leading-relaxed text-amber-800">
-                Google không cho phép ứng dụng dùng Client ID giả định. Mỗi nhà phát triển cần tạo mã miễn phí trên <b>Google Cloud Console</b>:
+                Google yêu cầu ứng dụng phải có Client ID thật đã đăng ký trong tài khoản Google của bạn (để tránh lỗi <i>401: invalid_client</i>):
               </p>
               <ol className="list-decimal list-inside space-y-1 text-[11px] leading-relaxed text-amber-900 font-medium">
-                <li>Truy cập <b>console.cloud.google.com</b> ➔ Tạo Project mới.</li>
+                <li>Truy cập <b>console.cloud.google.com</b> ➔ Tạo Project mới (ví dụ: <i>Explorer Minton</i>).</li>
                 <li>Vào <b>APIs & Services</b> ➔ Bật <b>Google Drive API</b>.</li>
-                <li>Tạo <b>OAuth 2.0 Client ID (Web Application)</b> ➔ Copy Client ID dán vào ô trên!</li>
+                <li>Vào mục <b>Credentials</b> ➔ Tạo <b>OAuth Client ID (Web Application)</b> ➔ Copy mã Client ID dán vào ô bên trên!</li>
               </ol>
             </div>
           )}
         </div>
       )}
 
-      {/* Primary Action Button */}
+      {/* Action Button */}
       {isConnected ? (
         <button
           onClick={handleSyncNow}
@@ -246,30 +236,21 @@ export const GoogleDriveSyncCard: React.FC<GoogleDriveSyncCardProps> = ({ onSync
           />
           <span>
             {syncStatus.state === 'syncing'
-              ? 'Đang đồng bộ dữ liệu...'
+              ? 'Đang kết nối & đồng bộ dữ liệu...'
               : 'Đồng Bộ Ngay Với Google Drive'}
           </span>
         </button>
       ) : (
-        <div className="space-y-2">
-          <button
-            onClick={handleSignInGoogle}
-            disabled={isAuthorizing}
-            className="w-full py-3.5 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20 transition-all active:scale-95 disabled:opacity-50"
-          >
-            <Cloud className="w-4 h-4" />
-            <span>Đăng Nhập Google Drive Bằng Client ID</span>
-          </button>
-
-          <button
-            onClick={handleTestSimulateSync}
-            disabled={isAuthorizing}
-            className="w-full py-2.5 px-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            <span>Kích Hoạt Đồng Bộ Trực Tiếp (Dùng Ngay)</span>
-          </button>
-        </div>
+        <button
+          onClick={handleSignInGoogle}
+          disabled={isAuthorizing}
+          className="w-full py-3.5 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20 transition-all active:scale-95 disabled:opacity-50"
+        >
+          <Cloud className="w-4 h-4" />
+          <span>
+            {isAuthorizing ? 'Đang mở màn hình đăng nhập Google...' : 'Đăng Nhập Google & Cấp Quyền Đồng Bộ'}
+          </span>
+        </button>
       )}
 
       {/* Local JSON Backup / Restore section */}

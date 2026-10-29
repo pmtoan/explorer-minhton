@@ -108,9 +108,11 @@ class GoogleDriveSyncService {
   public async requestGoogleAuth(clientId: string): Promise<string> {
     const trimmedId = clientId.trim();
     if (!trimmedId) {
-      throw new Error(
-        'Vui lòng nhập Google OAuth Client ID của bạn để kết nối với Google Drive.'
+      const err = new Error(
+        'Vui lòng nhập Google OAuth Client ID của bạn từ Google Cloud Console để kết nối.'
       );
+      this.updateStatus({ state: 'error', message: err.message });
+      throw err;
     }
 
     return new Promise((resolve, reject) => {
@@ -123,9 +125,9 @@ class GoogleDriveSyncService {
             prompt: 'select_account',
             callback: async (response) => {
               if (response.error || !response.access_token) {
-                reject(
-                  new Error(response.error || 'Đăng nhập Google bị hủy hoặc gặp lỗi')
-                );
+                const errMsg = response.error || 'Đăng nhập Google bị hủy hoặc thất bại.';
+                this.updateStatus({ state: 'error', message: errMsg });
+                reject(new Error(errMsg));
                 return;
               }
 
@@ -139,6 +141,10 @@ class GoogleDriveSyncService {
                 autoSync: true,
               };
               storageService.saveGoogleDriveConfig(config);
+              this.updateStatus({
+                state: 'idle',
+                message: `Đã kết nối tài khoản: ${config.userEmail}`,
+              });
               resolve(response.access_token);
             },
           });
@@ -167,25 +173,12 @@ class GoogleDriveSyncService {
             window.location.href = authUrl;
           }
         } catch (e) {
+          const errMsg = e instanceof Error ? e.message : 'Không thể mở cửa sổ đăng nhập Google';
+          this.updateStatus({ state: 'error', message: errMsg });
           reject(e);
         }
       }
     });
-  }
-
-  /**
-   * Simulates cloud sync for testing without requiring a Google Cloud project.
-   */
-  public async simulateTestCloudSync(email = 'pmtoan.explorer@gmail.com'): Promise<void> {
-    const config: GoogleDriveConfig = {
-      clientId: 'simulated-personal-drive',
-      accessToken: `mock-token-${Date.now()}`,
-      expiresAt: Date.now() + 86400 * 1000,
-      userEmail: email,
-      autoSync: true,
-    };
-    storageService.saveGoogleDriveConfig(config);
-    await this.syncWithDrive();
   }
 
   /**
@@ -195,8 +188,9 @@ class GoogleDriveSyncService {
     const config = storageService.getGoogleDriveConfig();
     config.accessToken = undefined;
     config.userEmail = undefined;
+    config.expiresAt = undefined;
     storageService.saveGoogleDriveConfig(config);
-    this.updateStatus({ state: 'idle', message: 'Đã đăng xuất tài khoản Google' });
+    this.updateStatus({ state: 'idle', message: 'Đã đăng xuất tài khoản Google Drive' });
   }
 
   /**
@@ -204,32 +198,29 @@ class GoogleDriveSyncService {
    */
   public async syncWithDrive(): Promise<SyncPayload> {
     const config = storageService.getGoogleDriveConfig();
+
+    if (!config.accessToken) {
+      const err = new Error(
+        'Chưa kết nối tài khoản Google Drive! Vui lòng nhập Client ID và bấm Đăng nhập để cấp quyền.'
+      );
+      this.updateStatus({ state: 'error', message: err.message });
+      throw err;
+    }
+
+    if (config.expiresAt && Date.now() > config.expiresAt) {
+      const err = new Error(
+        'Phiên đăng nhập Google đã hết hạn. Vui lòng bấm Đăng nhập lại để tiếp tục đồng bộ.'
+      );
+      this.updateStatus({ state: 'error', message: err.message });
+      throw err;
+    }
+
     this.updateStatus({ state: 'syncing', message: 'Đang kết nối tới Google Drive...' });
 
     try {
       const localPayload = storageService.getExportPayload();
-
-      // If simulated or mock token, merge and update timestamp
-      if (!config.accessToken || config.accessToken.startsWith('mock-token')) {
-        await new Promise((r) => setTimeout(r, 600)); // Smooth realistic delay
-        const nowStr = new Date().toLocaleTimeString('vi-VN', {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-        config.lastSyncTime = new Date().toISOString();
-        storageService.saveGoogleDriveConfig(config);
-
-        this.updateStatus({
-          state: 'success',
-          message: `Đồng bộ thành công lúc ${nowStr}`,
-          lastSyncedAt: config.lastSyncTime,
-        });
-
-        return localPayload;
-      }
-
-      // Real Google Drive REST API v3
       const token = config.accessToken;
+
       const fileId = await this.findSyncFile(token);
 
       let remotePayload: SyncPayload | null = null;
@@ -256,7 +247,7 @@ class GoogleDriveSyncService {
 
       this.updateStatus({
         state: 'success',
-        message: `Đồng bộ thành công lúc ${nowStr}`,
+        message: `Đồng bộ Google Drive thành công lúc ${nowStr}`,
         lastSyncedAt: config.lastSyncTime,
       });
 
@@ -276,7 +267,12 @@ class GoogleDriveSyncService {
         headers: { Authorization: `Bearer ${token}` },
       }
     );
-    if (!res.ok) throw new Error('Không thể tìm file trên Google Drive');
+    if (res.status === 401) {
+      throw new Error('Tài khoản Google hết hạn hoặc token không hợp lệ (401). Vui lòng đăng nhập lại.');
+    }
+    if (!res.ok) {
+      throw new Error(`Google Drive API lỗi (${res.status}): Không thể tìm file.`);
+    }
     const data = await res.json();
     return data.files && data.files.length > 0 ? data.files[0].id : null;
   }
@@ -285,7 +281,9 @@ class GoogleDriveSyncService {
     const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) throw new Error('Không thể tải file từ Google Drive');
+    if (!res.ok) {
+      throw new Error(`Google Drive API lỗi (${res.status}): Không thể tải file dữ liệu.`);
+    }
     return await res.json();
   }
 
@@ -308,7 +306,9 @@ class GoogleDriveSyncService {
           body: content,
         }
       );
-      if (!res.ok) throw new Error('Không thể cập nhật file lên Google Drive');
+      if (!res.ok) {
+        throw new Error(`Google Drive API lỗi (${res.status}): Không thể ghi đè file.`);
+      }
     } else {
       // Create new
       const metadata = {
@@ -330,7 +330,9 @@ class GoogleDriveSyncService {
           body: form,
         }
       );
-      if (!res.ok) throw new Error('Không thể tạo file trên Google Drive');
+      if (!res.ok) {
+        throw new Error(`Google Drive API lỗi (${res.status}): Không thể tạo file mới trên Drive.`);
+      }
     }
   }
 
