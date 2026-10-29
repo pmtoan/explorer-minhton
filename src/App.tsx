@@ -34,7 +34,7 @@ export const App: React.FC = () => {
                   Explorer Minton
                 </h1>
                 <span className="px-1.5 py-0.2 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px]">
-                  v1.0.3
+                  v1.1.0
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-medium">
