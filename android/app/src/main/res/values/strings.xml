@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Explorer Minhton</string>
+    <string name="title_activity_main">Explorer Minhton</string>
+    <string name="package_name">com.minhton.motoexplorer</string>
+    <string name="custom_url_scheme">com.minhton.motoexplorer</string>
+</resources>
