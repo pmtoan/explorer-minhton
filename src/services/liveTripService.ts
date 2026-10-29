@@ -1,4 +1,11 @@
-import { ActiveTrip, FinishTripInput, Trip, AdministrativeCheckpoint } from '../types/trip';
+import {
+  ActiveTrip,
+  FinishTripInput,
+  Trip,
+  AdministrativeCheckpoint,
+  TripDestination,
+  LiveTelemetry,
+} from '../types/trip';
 import { storageService } from './storageService';
 import {
   calculateDistanceKm,
@@ -6,6 +13,7 @@ import {
   createCheckpointFromLocation,
 } from './geoService';
 import { buildGoogleMapsMultiStopUrl } from './googleMapsDirectionsService';
+import { KalmanGpsFilter } from './kalmanFilterService';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 
@@ -16,13 +24,32 @@ class LiveTripService {
   private webWatchId: number | null = null;
   private nativeWatchId: string | null = null;
   private listeners: Set<TripChangeListener> = new Set();
+  private kalman = new KalmanGpsFilter(3.0);
+  private lastUpdateMs: number = 0;
 
   constructor() {
     this.activeTrip = storageService.getActiveTrip();
+    // Ensure telemetry object exists if restored from older schema
+    if (this.activeTrip && !this.activeTrip.telemetry) {
+      this.activeTrip.telemetry = this.createDefaultTelemetry();
+    }
     // If there was an active trip in recording state when page reloaded, resume GPS tracking
     if (this.activeTrip && this.activeTrip.status === 'recording') {
       this.startGpsWatch();
     }
+  }
+
+  private createDefaultTelemetry(): LiveTelemetry {
+    return {
+      currentSpeedKmh: 0,
+      maxSpeedKmh: 0,
+      averageSpeedKmh: 0,
+      movingDurationMs: 0,
+      stationaryDurationMs: 0,
+      isAutoPaused: false,
+      autoPauseEnabled: true,
+      kalmanFiltered: true,
+    };
   }
 
   public subscribe(listener: TripChangeListener): () => void {
@@ -57,8 +84,40 @@ class LiveTripService {
   }
 
   /**
+   * Sets or updates target destination for in-app Google Maps navigation.
+   */
+  public setDestination(destination: TripDestination | undefined): void {
+    if (!this.activeTrip) return;
+
+    if (destination) {
+      const origin = this.activeTrip.currentLocation
+        ? `${this.activeTrip.currentLocation.latitude},${this.activeTrip.currentLocation.longitude}`
+        : '10.7769,106.7009';
+      const destParam = encodeURIComponent(destination.address || destination.name);
+      destination.googleMapsEmbedUrl = `https://maps.google.com/maps?saddr=${origin}&daddr=${destParam}&output=embed`;
+    }
+
+    this.activeTrip.destination = destination;
+    this.notify();
+  }
+
+  /**
+   * Toggles Smart Auto-Pause ON or OFF.
+   */
+  public toggleAutoPause(enabled: boolean): void {
+    if (!this.activeTrip) return;
+    this.activeTrip.telemetry.autoPauseEnabled = enabled;
+
+    if (!enabled && this.activeTrip.telemetry.isAutoPaused) {
+      this.activeTrip.telemetry.isAutoPaused = false;
+      this.activeTrip.gpsStatus = 'locked';
+      this.startGpsWatch();
+    }
+    this.notify();
+  }
+
+  /**
    * Explicitly checks and requests native or browser location permission.
-   * Returns true if permission is granted.
    */
   public async requestLocationPermission(): Promise<boolean> {
     try {
@@ -83,7 +142,7 @@ class LiveTripService {
   }
 
   /**
-   * Starts a new live motorcycle trip.
+   * Starts a new live motorcycle trip with Kalman filtering and smart telemetry.
    */
   public async startLiveTrip(title?: string): Promise<ActiveTrip> {
     if (this.activeTrip) {
@@ -94,7 +153,9 @@ class LiveTripService {
     const displayTime = formatDisplayStartTime(now);
     const defaultTitle = title || `Phượt ${formatShortDate(now)}`;
 
-    // Explicitly prompt for GPS permission on Android / Native device
+    this.kalman.reset();
+    this.lastUpdateMs = Date.now();
+
     const hasPermission = await this.requestLocationPermission();
 
     const newTrip: ActiveTrip = {
@@ -111,6 +172,7 @@ class LiveTripService {
       totalPauseDurationMs: 0,
       gpsStatus: hasPermission ? 'searching' : 'permission_denied',
       gpsErrorMessage: hasPermission ? undefined : 'Chưa được cấp quyền vị trí thiết bị',
+      telemetry: this.createDefaultTelemetry(),
     };
 
     this.activeTrip = newTrip;
@@ -134,6 +196,7 @@ class LiveTripService {
     this.stopGpsWatch();
     this.activeTrip.status = 'paused';
     this.activeTrip.gpsStatus = 'paused';
+    this.activeTrip.telemetry.currentSpeedKmh = 0;
     this.activeTrip.pausedAt = new Date().toISOString();
     this.notify();
   }
@@ -151,8 +214,10 @@ class LiveTripService {
     }
 
     this.activeTrip.status = 'recording';
-    // If we already have a locked location fix, retain locked status
     this.activeTrip.gpsStatus = this.activeTrip.currentLocation ? 'locked' : 'searching';
+    this.activeTrip.telemetry.isAutoPaused = false;
+    this.activeTrip.telemetry.stationaryDurationMs = 0;
+    this.lastUpdateMs = Date.now();
     this.notify();
     this.startGpsWatch();
     this.captureCurrentLocation(false);
@@ -182,7 +247,7 @@ class LiveTripService {
   }
 
   /**
-   * Finishes the active trip, prompts/saves fuel and cost, and records to history.
+   * Finishes the active trip, saves fuel, cost, telemetry, and records into completed history.
    */
   public finishLiveTrip(input: FinishTripInput): Trip {
     if (!this.activeTrip) {
@@ -231,19 +296,25 @@ class LiveTripService {
         ? active.distanceKm
         : calculateRouteDistanceKm(active.route.points);
 
+    const movingDurationMinutes = Math.round(active.telemetry.movingDurationMs / 60000);
+
     const completedTrip: Trip = {
       id: active.id,
       title: input.title?.trim() || active.title,
       date: active.startTime.split('T')[0],
       startTime: formatTimeOnly(new Date(active.startTime)),
       displayDate: formatFullDisplayDate(new Date(active.startTime)),
-      distanceKm: Math.round(finalKm * 10) / 10,
+      distanceKm: Math.round(finalKm * 100) / 100,
       fuelLiters: Math.max(0, input.fuelLiters || 0),
       costVnd: Math.max(0, input.costVnd || 0),
       notes: input.notes?.trim() || '',
       bikeComfortRating: input.bikeComfortRating || 5,
       route: active.route,
       googleMapsUrl,
+      maxSpeedKmh: active.telemetry.maxSpeedKmh,
+      averageSpeedKmh: active.telemetry.averageSpeedKmh,
+      movingDurationMinutes,
+      destination: active.destination,
       createdAt: active.startTime,
       updatedAt: new Date().toISOString(),
     };
@@ -253,6 +324,7 @@ class LiveTripService {
 
     // Clear active trip
     this.activeTrip = null;
+    this.kalman.reset();
     storageService.clearActiveTrip();
     this.notify();
 
@@ -265,6 +337,7 @@ class LiveTripService {
   public discardActiveTrip(): void {
     this.stopGpsWatch();
     this.activeTrip = null;
+    this.kalman.reset();
     storageService.clearActiveTrip();
     this.notify();
   }
@@ -279,7 +352,7 @@ class LiveTripService {
         this.nativeWatchId = await Geolocation.watchPosition(
           {
             enableHighAccuracy: true,
-            timeout: 15000,
+            timeout: 10000,
             maximumAge: 3000,
           },
           (position, err) => {
@@ -296,7 +369,8 @@ class LiveTripService {
               this.handlePositionUpdate(
                 position.coords.latitude,
                 position.coords.longitude,
-                position.coords.accuracy
+                position.coords.accuracy,
+                position.timestamp
               );
             }
           }
@@ -315,7 +389,8 @@ class LiveTripService {
             this.handlePositionUpdate(
               position.coords.latitude,
               position.coords.longitude,
-              position.coords.accuracy
+              position.coords.accuracy,
+              position.timestamp
             );
           },
           (error) => {
@@ -329,8 +404,8 @@ class LiveTripService {
           },
           {
             enableHighAccuracy: true,
-            timeout: 15000,
-            maximumAge: 5000,
+            timeout: 10000,
+            maximumAge: 4000,
           }
         );
       } catch (e) {
@@ -455,13 +530,29 @@ class LiveTripService {
     }
   }
 
-  private async handlePositionUpdate(lat: number, lon: number, accuracy?: number): Promise<void> {
+  private async handlePositionUpdate(
+    rawLat: number,
+    rawLon: number,
+    accuracy?: number,
+    timestampMs?: number
+  ): Promise<void> {
     if (!this.activeTrip) return;
+
+    const now = timestampMs || Date.now();
+    const dtMs = Math.max(200, now - (this.lastUpdateMs || now));
+    this.lastUpdateMs = now;
+
+    // Apply High-Speed Kalman Filter to smooth jitter & eliminate stationary noise
+    const filtered = this.kalman.process(rawLat, rawLon, accuracy || 10, now);
+    const lat = filtered.latitude;
+    const lon = filtered.longitude;
+    const currentSpeed = filtered.speedKmh;
 
     const prevLocation = this.activeTrip.currentLocation;
     this.activeTrip.currentLocation = { latitude: lat, longitude: lon };
     this.activeTrip.lastLocationUpdate = new Date().toISOString();
-    if (this.activeTrip.status === 'recording') {
+
+    if (this.activeTrip.status === 'recording' && !this.activeTrip.telemetry.isAutoPaused) {
       this.activeTrip.gpsStatus = 'locked';
       this.activeTrip.gpsErrorMessage = undefined;
     }
@@ -469,7 +560,43 @@ class LiveTripService {
       this.activeTrip.accuracyMeters = Math.round(accuracy);
     }
 
-    // Check distance from previous point
+    // Telemetry Update
+    this.activeTrip.telemetry.currentSpeedKmh = currentSpeed;
+    this.activeTrip.telemetry.maxSpeedKmh = Math.max(
+      this.activeTrip.telemetry.maxSpeedKmh,
+      currentSpeed
+    );
+
+    // Smart Auto-Pause Logic
+    if (this.activeTrip.telemetry.autoPauseEnabled) {
+      if (currentSpeed < 3.0) {
+        this.activeTrip.telemetry.stationaryDurationMs += dtMs;
+        // If stationary for >= 25 seconds (at stoplight or cafe break), trigger Smart Auto-Pause
+        if (this.activeTrip.telemetry.stationaryDurationMs >= 25000 && !this.activeTrip.telemetry.isAutoPaused) {
+          this.activeTrip.telemetry.isAutoPaused = true;
+          this.activeTrip.gpsStatus = 'paused';
+          this.stopGpsWatch();
+        }
+      } else {
+        // Vehicle is moving (speed >= 5.0 km/h)
+        if (this.activeTrip.telemetry.isAutoPaused) {
+          this.activeTrip.telemetry.isAutoPaused = false;
+          this.activeTrip.gpsStatus = 'locked';
+          this.startGpsWatch();
+        }
+        this.activeTrip.telemetry.stationaryDurationMs = 0;
+        this.activeTrip.telemetry.movingDurationMs += dtMs;
+
+        // Calculate continuous moving average speed
+        const movingHours = this.activeTrip.telemetry.movingDurationMs / 3600000;
+        if (movingHours > 0.01) {
+          this.activeTrip.telemetry.averageSpeedKmh =
+            Math.round((this.activeTrip.distanceKm / movingHours) * 10) / 10;
+        }
+      }
+    }
+
+    // Calculate distance from previous point
     let deltaKm = 0;
     if (prevLocation) {
       deltaKm = calculateDistanceKm(
@@ -480,20 +607,22 @@ class LiveTripService {
       );
     }
 
-    // Only record route point if moved at least 25 meters (0.025 km) or first point
-    if (!prevLocation || deltaKm >= 0.025) {
+    // Record route point and accumulate odometer if moved significantly or first point
+    // Discards jitter smaller than 12 meters when stationary
+    if (!prevLocation || (deltaKm >= 0.012 && currentSpeed >= 2.0)) {
       this.activeTrip.route.points.push({
         latitude: lat,
         longitude: lon,
         timestamp: new Date().toISOString(),
+        speedKmh: currentSpeed,
       });
 
       if (deltaKm > 0) {
         this.activeTrip.distanceKm =
-          Math.round((this.activeTrip.distanceKm + deltaKm) * 10) / 10;
+          Math.round((this.activeTrip.distanceKm + deltaKm) * 100) / 100;
       }
 
-      // Check if crossed into a new significant administrative district (e.g. > 8 km from last checkpoint)
+      // Check if crossed into a new significant administrative district (> 8 km from last checkpoint)
       const lastCheckpoint =
         this.activeTrip.route.checkpoints[
           this.activeTrip.route.checkpoints.length - 1

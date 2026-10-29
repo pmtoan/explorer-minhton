@@ -113,23 +113,45 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
         </div>
       ) : null}
 
-      {/* Main Odometer Area */}
-      <div className="bg-white/10 hover:bg-white/15 p-3 rounded-2xl transition-all border border-white/20 mb-3">
+      {/* Main Odometer & Telemetry Area */}
+      <div className="bg-white/10 hover:bg-white/15 p-3.5 rounded-2xl transition-all border border-white/20 mb-3">
         <div className="flex items-center justify-between text-xs font-medium text-white/90">
-          <span>Quãng đường đã đi (GPS):</span>
+          <span className="flex items-center gap-1 font-bold">
+            <span>Quãng đường (Đo thời gian thực):</span>
+          </span>
           <span className="inline-flex items-center gap-1 text-xs font-bold bg-white/20 px-2.5 py-0.5 rounded-lg text-white">
-            Xem chi tiết <ChevronRight className="w-3.5 h-3.5" />
+            Xem chi tiết & Maps <ChevronRight className="w-3.5 h-3.5" />
           </span>
         </div>
-        <div className="text-3xl font-black text-white flex items-baseline gap-1.5 mt-1 tracking-tight">
-          <span>{activeTrip.distanceKm.toFixed(1)}</span>
-          <span className="text-sm font-bold opacity-90">km</span>
+
+        <div className="flex items-baseline justify-between mt-1">
+          <div className="text-3xl font-black text-white flex items-baseline gap-1.5 tracking-tight font-mono">
+            <span>{activeTrip.distanceKm.toFixed(2)}</span>
+            <span className="text-sm font-bold opacity-90">km</span>
+          </div>
+
+          {/* Real-Time Speed Badge */}
+          <div className="bg-white/20 px-3 py-1 rounded-xl text-right">
+            <div className="text-[10px] text-white/80 font-bold uppercase">Tốc độ</div>
+            <div className="text-lg font-black text-white font-mono leading-none">
+              {(activeTrip.telemetry?.currentSpeedKmh || 0).toFixed(0)}{' '}
+              <span className="text-[10px] font-normal opacity-90">km/h</span>
+            </div>
+          </div>
         </div>
-        <div className="text-xs text-white/90 flex items-center gap-1.5 mt-1.5 truncate">
-          <Navigation className="w-3.5 h-3.5 flex-shrink-0 text-emerald-200" />
-          <span className="truncate">
-            Đã qua <b>{checkpointCount}</b> mốc • Vị trí gần nhất: <b>{lastCpName}</b>
-          </span>
+
+        <div className="text-xs text-white/90 flex items-center justify-between gap-1.5 mt-2 pt-2 border-t border-white/10 truncate">
+          <div className="flex items-center gap-1.5 truncate">
+            <Navigation className="w-3.5 h-3.5 flex-shrink-0 text-emerald-200" />
+            <span className="truncate">
+              Đã qua <b>{checkpointCount}</b> mốc • <b>{lastCpName}</b>
+            </span>
+          </div>
+          {activeTrip.destination && (
+            <span className="text-[10px] bg-rose-500/80 text-white font-bold px-2 py-0.5 rounded-lg flex-shrink-0 truncate max-w-[120px]">
+              Đến: {activeTrip.destination.name}
+            </span>
+          )}
         </div>
       </div>
 

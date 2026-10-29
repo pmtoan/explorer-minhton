@@ -108,6 +108,16 @@ describe('Live Trip Lifecycle Engine (v4.0)', () => {
       distanceKm: 85.4,
       route: { points: [], checkpoints: [] },
       totalPauseDurationMs: 600000,
+      telemetry: {
+        currentSpeedKmh: 0,
+        maxSpeedKmh: 45,
+        averageSpeedKmh: 32,
+        movingDurationMs: 3600000,
+        stationaryDurationMs: 600000,
+        isAutoPaused: false,
+        autoPauseEnabled: true,
+        kalmanFiltered: true,
+      },
     };
     storageService.saveActiveTrip(savedActiveTrip);
 

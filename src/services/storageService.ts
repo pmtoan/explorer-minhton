@@ -83,7 +83,21 @@ class StorageService {
   public getActiveTrip(): ActiveTrip | null {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.ACTIVE_TRIP);
-      return data ? JSON.parse(data) : null;
+      if (!data) return null;
+      const trip = JSON.parse(data) as ActiveTrip;
+      if (!trip.telemetry) {
+        trip.telemetry = {
+          currentSpeedKmh: 0,
+          maxSpeedKmh: 0,
+          averageSpeedKmh: 0,
+          movingDurationMs: 0,
+          stationaryDurationMs: 0,
+          isAutoPaused: false,
+          autoPauseEnabled: true,
+          kalmanFiltered: true,
+        };
+      }
+      return trip;
     } catch {
       return null;
     }

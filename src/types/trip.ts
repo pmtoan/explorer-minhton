@@ -8,6 +8,7 @@ export interface RoutePoint {
   latitude: number;
   longitude: number;
   timestamp: string;
+  speedKmh?: number;
 }
 
 export interface AdministrativeCheckpoint {
@@ -24,6 +25,25 @@ export interface AdministrativeCheckpoint {
 export interface RouteData {
   points: RoutePoint[];
   checkpoints: AdministrativeCheckpoint[];
+}
+
+export interface TripDestination {
+  name: string;
+  address: string;
+  latitude?: number;
+  longitude?: number;
+  googleMapsEmbedUrl?: string;
+}
+
+export interface LiveTelemetry {
+  currentSpeedKmh: number;
+  maxSpeedKmh: number;
+  averageSpeedKmh: number;
+  movingDurationMs: number;
+  stationaryDurationMs: number;
+  isAutoPaused: boolean;
+  autoPauseEnabled: boolean;
+  kalmanFiltered: boolean;
 }
 
 export interface ActiveTrip {
@@ -44,6 +64,8 @@ export interface ActiveTrip {
   gpsStatus?: GpsSignalStatus;
   accuracyMeters?: number;
   gpsErrorMessage?: string;
+  telemetry: LiveTelemetry;
+  destination?: TripDestination;
 }
 
 export interface Trip {
@@ -59,6 +81,10 @@ export interface Trip {
   bikeComfortRating?: number; // 1-5
   route: RouteData;
   googleMapsUrl: string;
+  maxSpeedKmh?: number;
+  averageSpeedKmh?: number;
+  movingDurationMinutes?: number;
+  destination?: TripDestination;
   createdAt: string; // ISO string
   updatedAt: string; // ISO string
   isDeleted?: boolean;
