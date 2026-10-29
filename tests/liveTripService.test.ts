@@ -128,5 +128,54 @@ describe('Live Trip Lifecycle Engine (v4.0)', () => {
     expect(restored?.status).toBe('paused');
     expect(restored?.distanceKm).toBe(85.4);
   });
+
+  it('accumulates real-time odometer distance and updates speed telemetry as vehicle travels', async () => {
+    await liveTripService.startLiveTrip('Test Realtime Tracking');
+    let notifyCallCount = 0;
+    const unsubscribe = liveTripService.subscribe(() => {
+      notifyCallCount++;
+    });
+
+    const t0 = 1700000000000;
+    // Step 1: Initial fix
+    await liveTripService.handlePositionUpdate(10.776900, 106.700900, 5, t0);
+    expect(liveTripService.getActiveTrip()?.distanceKm).toBe(0);
+
+    // Step 2: Rider travels 50 meters north at ~10 m/s (~36 km/h) after 5 seconds
+    // 50m in latitude is ~0.00045 degrees
+    await liveTripService.handlePositionUpdate(10.777350, 106.700900, 5, t0 + 5000, 10.0);
+    const active = liveTripService.getActiveTrip();
+    expect(active?.distanceKm).toBeGreaterThanOrEqual(0.04);
+    expect(active?.distanceKm).toBeLessThan(0.06);
+    expect(active?.telemetry.currentSpeedKmh).toBe(36);
+    expect(active?.telemetry.maxSpeedKmh).toBe(36);
+    expect(notifyCallCount).toBeGreaterThan(1);
+
+    // Step 3: Rider travels another 50 meters north
+    await liveTripService.handlePositionUpdate(10.777800, 106.700900, 5, t0 + 10000, 10.0);
+    expect(liveTripService.getActiveTrip()?.distanceKm).toBeGreaterThan(0.08);
+
+    unsubscribe();
+  });
+
+  it('triggers auto-pause when stopped >= 25s, then automatically resumes when moving', async () => {
+    await liveTripService.startLiveTrip('Test Auto Pause Lifecycle');
+    const t0 = 1700000000000;
+
+    // Initial fix and small movement
+    await liveTripService.handlePositionUpdate(10.776900, 106.700900, 5, t0);
+    await liveTripService.handlePositionUpdate(10.777000, 106.700900, 5, t0 + 1000, 5.0);
+    expect(liveTripService.getActiveTrip()?.telemetry.isAutoPaused).toBe(false);
+
+    // Rider stops at traffic light (speed = 0) for 26 seconds
+    await liveTripService.handlePositionUpdate(10.777001, 106.700901, 5, t0 + 27000, 0);
+    expect(liveTripService.getActiveTrip()?.telemetry.isAutoPaused).toBe(true);
+    expect(liveTripService.getActiveTrip()?.gpsStatus).toBe('paused');
+
+    // Rider accelerates to 30 km/h (8.33 m/s) -> auto-pause must automatically resume!
+    await liveTripService.handlePositionUpdate(10.777200, 106.700900, 5, t0 + 29000, 8.33);
+    expect(liveTripService.getActiveTrip()?.telemetry.isAutoPaused).toBe(false);
+    expect(liveTripService.getActiveTrip()?.gpsStatus).toBe('locked');
+  });
 });
 

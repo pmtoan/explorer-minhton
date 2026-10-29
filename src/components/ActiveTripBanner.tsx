@@ -73,7 +73,7 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
           <button
             onClick={async (e) => {
               e.stopPropagation();
-              await liveTripService.requestLocationPermission();
+              await liveTripService.retryLocationAcquisition();
             }}
             className="px-2.5 py-1 bg-white text-rose-700 rounded-xl text-[11px] font-black hover:bg-rose-50 transition-colors shadow-xs"
           >
@@ -83,9 +83,20 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
       )}
 
       {activeTrip.gpsStatus === 'error' && (
-        <div className="bg-amber-600 text-white p-2.5 rounded-2xl mb-2.5 text-xs font-bold flex items-center gap-1.5 shadow-md">
-          <span>⚠️</span>
-          <span>{activeTrip.gpsErrorMessage || 'GPS chưa có tín hiệu. Hãy bật Vị trí trên máy.'}</span>
+        <div className="bg-amber-600 text-white p-2.5 rounded-2xl mb-2.5 text-xs font-bold flex items-center justify-between shadow-md">
+          <div className="flex items-center gap-1.5 flex-1 pr-2">
+            <span>⚠️</span>
+            <span>{activeTrip.gpsErrorMessage || 'GPS chưa có tín hiệu. Hãy bật Vị trí trên máy.'}</span>
+          </div>
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              await liveTripService.retryLocationAcquisition();
+            }}
+            className="px-2.5 py-1 bg-white text-amber-800 rounded-xl text-[11px] font-black hover:bg-amber-50 transition-colors shadow-xs flex-shrink-0"
+          >
+            Thử lại
+          </button>
         </div>
       )}
 

@@ -10,7 +10,7 @@ export interface KalmanFilteredPoint {
 
 /**
  * 2D High-Speed GPS Kalman Filter tailored for motorcycle cruising & city riding.
- * Smooths jitter, suppresses stationary drift at stoplights, and estimates real-time speed.
+ * Smooths jitter, suppresses stationary drift at stoplights, and provides real-time speed.
  */
 export class KalmanGpsFilter {
   // State: lat, lon, vLat (deg/s), vLon (deg/s)
@@ -47,12 +47,14 @@ export class KalmanGpsFilter {
 
   /**
    * Processes a raw GPS measurement and returns the optimal filtered point.
+   * Supports hardware-reported GPS Doppler speed (rawSpeedMps) from mobile chipsets.
    */
   public process(
     rawLat: number,
     rawLon: number,
     accuracyMeters = 10,
-    timestampMs = Date.now()
+    timestampMs = Date.now(),
+    rawSpeedMps?: number | null
   ): KalmanFilteredPoint {
     // 1. Initial measurement
     if (!this.isInitialized || this.lastTimestampMs === 0) {
@@ -65,11 +67,16 @@ export class KalmanGpsFilter {
       this.lastTimestampMs = timestampMs;
       this.isInitialized = true;
 
+      const initialSpeedKmh =
+        rawSpeedMps !== undefined && rawSpeedMps !== null && !isNaN(rawSpeedMps) && rawSpeedMps >= 0
+          ? Math.round(rawSpeedMps * 3.6 * 10) / 10
+          : 0;
+
       return {
         latitude: rawLat,
         longitude: rawLon,
         accuracy: accuracyMeters,
-        speedKmh: 0,
+        speedKmh: initialSpeedKmh < 1.5 ? 0 : initialSpeedKmh,
         timestampMs,
       };
     }
@@ -84,11 +91,15 @@ export class KalmanGpsFilter {
       this.vLat = 0;
       this.vLon = 0;
       this.variancePos = Math.max(5, accuracyMeters * accuracyMeters);
+      const resumedSpeedKmh =
+        rawSpeedMps !== undefined && rawSpeedMps !== null && !isNaN(rawSpeedMps) && rawSpeedMps >= 0
+          ? Math.round(rawSpeedMps * 3.6 * 10) / 10
+          : 0;
       return {
         latitude: rawLat,
         longitude: rawLon,
         accuracy: accuracyMeters,
-        speedKmh: 0,
+        speedKmh: resumedSpeedKmh < 1.5 ? 0 : resumedSpeedKmh,
         timestampMs,
       };
     }
@@ -126,14 +137,25 @@ export class KalmanGpsFilter {
     this.variancePos = (1 - kPos) * predVarPos;
     this.varianceVel = (1 - kVel) * predVarVel;
 
+    // Remember previous estimated position before state transition
+    const prevEstimatedLat = this.lat;
+    const prevEstimatedLon = this.lon;
+
     this.lat = newLat;
     this.lon = newLon;
     this.vLat = newVLat;
     this.vLon = newVLon;
 
-    // Calculate real-time speed in km/h using Haversine between previous and updated position
-    const distanceMeters = calculateDistanceKm(predLat, predLon, newLat, newLon) * 1000;
-    let speedKmh = Math.round((distanceMeters / dt) * 3.6 * 10) / 10;
+    // Calculate real-time speed in km/h
+    let speedKmh = 0;
+    if (rawSpeedMps !== undefined && rawSpeedMps !== null && !isNaN(rawSpeedMps) && rawSpeedMps >= 0) {
+      // Direct hardware-measured GPS Doppler ground speed (native chip on iPhone/Android)
+      speedKmh = Math.round(rawSpeedMps * 3.6 * 10) / 10;
+    } else {
+      // Finite-difference speed between previous estimated position and new estimated position
+      const distanceMeters = calculateDistanceKm(prevEstimatedLat, prevEstimatedLon, newLat, newLon) * 1000;
+      speedKmh = dt > 0 ? Math.round((distanceMeters / dt) * 3.6 * 10) / 10 : 0;
+    }
 
     // Clamp micro-jitters at zero speed (e.g. stationary motorcycle at stop light)
     if (speedKmh < 1.5) {

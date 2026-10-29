@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { KalmanGpsFilter } from '../src/services/kalmanFilterService';
 
-describe('High-Speed GPS Kalman Filter (v1.0.4)', () => {
+describe('High-Speed GPS Kalman Filter (v1.1.0)', () => {
   let filter: KalmanGpsFilter;
 
   beforeEach(() => {
@@ -16,11 +16,10 @@ describe('High-Speed GPS Kalman Filter (v1.0.4)', () => {
   });
 
   it('smooths out sudden GPS outlier spike under bridge/trees', () => {
-    // Starting at 10.7769, 106.7009
     filter.process(10.7769, 106.7009, 5, 1000);
     filter.process(10.7770, 106.7010, 5, 2000);
 
-    // Sudden noise spike of 100m with degraded accuracy (30m)
+    // Sudden noise spike of 100m with degraded accuracy (45m)
     const spike = filter.process(10.7800, 106.7040, 45, 3000);
 
     // Filter should reject or heavily damp the jump towards the true trajectory
@@ -36,14 +35,25 @@ describe('High-Speed GPS Kalman Filter (v1.0.4)', () => {
     expect(stoppedPoint.speedKmh).toBe(0);
   });
 
-  it('tracks real-time cruising speed accurately during highway riding', () => {
+  it('tracks real-time cruising speed continuously over multi-step trajectory', () => {
     // 1 second interval moving ~13.88 meters/sec (~50 km/h)
     // 1 degree latitude is ~111,320m, so 13.88m is ~0.0001246 degrees
-    filter.process(10.7769, 106.7009, 5, 1000);
-    const cruising = filter.process(10.777025, 106.7009, 5, 2000);
+    filter.process(10.776900, 106.7009, 5, 1000);
+    const step1 = filter.process(10.777025, 106.7009, 5, 2000);
+    expect(step1.speedKmh).toBeGreaterThan(30);
+    expect(step1.speedKmh).toBeLessThan(70);
 
-    // Expect speed near 40-55 km/h
-    expect(cruising.speedKmh).toBeGreaterThan(30);
-    expect(cruising.speedKmh).toBeLessThan(70);
+    // Step 2 continuous movement: speed must NOT decay to zero
+    const step2 = filter.process(10.777150, 106.7009, 5, 3000);
+    expect(step2.speedKmh).toBeGreaterThan(30);
+    expect(step2.speedKmh).toBeLessThan(70);
+  });
+
+  it('uses hardware Doppler GPS speed when reported by mobile chip', () => {
+    filter.process(10.7769, 106.7009, 5, 1000);
+
+    // Hardware GPS chip on iPhone/Android reports 12.5 m/s (45 km/h)
+    const fix = filter.process(10.7770, 106.7009, 5, 2000, 12.5);
+    expect(fix.speedKmh).toBe(45);
   });
 });

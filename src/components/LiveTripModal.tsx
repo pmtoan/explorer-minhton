@@ -89,7 +89,7 @@ export const LiveTripModal: React.FC<LiveTripModalProps> = ({
               <p className="text-[11px] text-rose-600">Vui lòng bấm nút bên cạnh để cấp quyền GPS.</p>
             </div>
             <button
-              onClick={() => liveTripService.requestLocationPermission()}
+              onClick={() => liveTripService.retryLocationAcquisition()}
               className="px-3 py-1.5 bg-rose-600 text-white rounded-xl font-bold text-xs shadow-xs"
             >
               Cấp quyền

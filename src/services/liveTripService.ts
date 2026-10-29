@@ -131,6 +131,10 @@ class LiveTripService {
       }
 
       if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+        if (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+          console.warn('Geolocation blocked: Not a secure HTTPS context.');
+          return false;
+        }
         return true;
       }
 
@@ -139,6 +143,21 @@ class LiveTripService {
       console.warn('Lỗi kiểm tra quyền vị trí:', e);
       return false;
     }
+  }
+
+  /**
+   * Retries GPS lock after user grants permission in browser or settings.
+   */
+  public async retryLocationAcquisition(): Promise<void> {
+    if (!this.activeTrip) return;
+    this.activeTrip.gpsStatus = 'searching';
+    this.activeTrip.gpsErrorMessage = undefined;
+    this.notify();
+
+    await this.requestLocationPermission();
+    this.stopGpsWatch();
+    this.startGpsWatch();
+    this.captureCurrentLocation(false);
   }
 
   /**
@@ -157,6 +176,11 @@ class LiveTripService {
     this.lastUpdateMs = Date.now();
 
     const hasPermission = await this.requestLocationPermission();
+    const isInsecureWeb =
+      typeof window !== 'undefined' &&
+      !window.isSecureContext &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1';
 
     const newTrip: ActiveTrip = {
       id: `trip-${Date.now()}`,
@@ -170,8 +194,12 @@ class LiveTripService {
         checkpoints: [],
       },
       totalPauseDurationMs: 0,
-      gpsStatus: hasPermission ? 'searching' : 'permission_denied',
-      gpsErrorMessage: hasPermission ? undefined : 'Chưa được cấp quyền vị trí thiết bị',
+      gpsStatus: isInsecureWeb ? 'error' : hasPermission ? 'searching' : 'permission_denied',
+      gpsErrorMessage: isInsecureWeb
+        ? 'Trình duyệt Safari/iPhone bắt buộc dùng HTTPS để bật định vị GPS.'
+        : hasPermission
+        ? undefined
+        : 'Chưa được cấp quyền vị trí thiết bị',
       telemetry: this.createDefaultTelemetry(),
     };
 
@@ -370,7 +398,8 @@ class LiveTripService {
                 position.coords.latitude,
                 position.coords.longitude,
                 position.coords.accuracy,
-                position.timestamp
+                position.timestamp,
+                position.coords.speed
               );
             }
           }
@@ -383,6 +412,13 @@ class LiveTripService {
 
     // 2. Web browser navigator.geolocation fallback
     if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      if (this.webWatchId !== null) {
+        try {
+          navigator.geolocation.clearWatch(this.webWatchId);
+        } catch {}
+        this.webWatchId = null;
+      }
+
       try {
         this.webWatchId = navigator.geolocation.watchPosition(
           (position) => {
@@ -390,22 +426,37 @@ class LiveTripService {
               position.coords.latitude,
               position.coords.longitude,
               position.coords.accuracy,
-              position.timestamp
+              position.timestamp,
+              position.coords.speed
             );
           },
           (error) => {
-            console.warn('Geolocation watch error:', error.message);
+            console.warn('Geolocation watch notice:', error.code, error.message);
             if (this.activeTrip) {
-              this.activeTrip.gpsStatus =
-                error.code === error.PERMISSION_DENIED ? 'permission_denied' : 'error';
-              this.activeTrip.gpsErrorMessage = error.message;
-              this.notify();
+              if (error.code === error.PERMISSION_DENIED) {
+                this.activeTrip.gpsStatus = 'permission_denied';
+                this.activeTrip.gpsErrorMessage =
+                  'Chưa cấp quyền Vị trí. Hãy vào Cài đặt trình duyệt (Safari/Chrome) để cấp quyền.';
+                this.notify();
+              } else if (error.code === error.POSITION_UNAVAILABLE) {
+                this.activeTrip.gpsStatus = 'error';
+                this.activeTrip.gpsErrorMessage =
+                  'Không tìm thấy GPS hoặc thiết bị tắt dịch vụ định vị.';
+                this.notify();
+              } else if (error.code === error.TIMEOUT) {
+                // Keep searching on timeout, don't break tracking
+                if (this.activeTrip.gpsStatus !== 'locked') {
+                  this.activeTrip.gpsStatus = 'searching';
+                  this.activeTrip.gpsErrorMessage = 'Đang tìm tín hiệu vệ tinh GPS ngoài trời...';
+                  this.notify();
+                }
+              }
             }
           },
           {
             enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 4000,
+            timeout: 25000,
+            maximumAge: 1000,
           }
         );
       } catch (e) {
@@ -494,17 +545,25 @@ class LiveTripService {
           pos.coords.latitude,
           pos.coords.longitude,
           pos.coords.accuracy,
-          isStart
+          isStart,
+          pos.coords.speed
         );
       },
       (err) => {
-        console.warn('getCurrentPosition fallback notice:', err.message);
-        // Fallback default coordinates for offline emulator/testing
-        if (isStart && this.activeTrip && this.activeTrip.route.checkpoints.length === 0) {
-          this.handlePositionUpdate(10.7769, 106.7009, 10);
+        console.warn('getCurrentPosition error notice:', err.code, err.message);
+        if (this.activeTrip) {
+          if (err.code === err.PERMISSION_DENIED) {
+            this.activeTrip.gpsStatus = 'permission_denied';
+            this.activeTrip.gpsErrorMessage =
+              'Bạn chưa cấp quyền Vị trí trên trình duyệt. Hãy cho phép để kích hoạt GPS.';
+            this.notify();
+          } else {
+            this.activeTrip.gpsStatus = 'searching';
+            this.notify();
+          }
         }
       },
-      { timeout: 5000, enableHighAccuracy: false }
+      { timeout: 15000, enableHighAccuracy: true, maximumAge: 3000 }
     );
   }
 
@@ -512,9 +571,10 @@ class LiveTripService {
     lat: number,
     lon: number,
     accuracy?: number,
-    isStart = false
+    isStart = false,
+    speedMps?: number | null
   ): Promise<void> {
-    this.handlePositionUpdate(lat, lon, accuracy);
+    await this.handlePositionUpdate(lat, lon, accuracy, Date.now(), speedMps);
 
     if (isStart && this.activeTrip && this.activeTrip.route.checkpoints.length === 0) {
       const tripStartTime = this.activeTrip.startTime;
@@ -530,20 +590,22 @@ class LiveTripService {
     }
   }
 
-  private async handlePositionUpdate(
+  public async handlePositionUpdate(
     rawLat: number,
     rawLon: number,
     accuracy?: number,
-    timestampMs?: number
+    timestampMs?: number,
+    rawSpeedMps?: number | null
   ): Promise<void> {
     if (!this.activeTrip) return;
+    if (this.activeTrip.status === 'paused') return;
 
     const now = timestampMs || Date.now();
     const dtMs = Math.max(200, now - (this.lastUpdateMs || now));
     this.lastUpdateMs = now;
 
-    // Apply High-Speed Kalman Filter to smooth jitter & eliminate stationary noise
-    const filtered = this.kalman.process(rawLat, rawLon, accuracy || 10, now);
+    // Apply High-Speed Kalman Filter to smooth jitter & estimate true ground speed
+    const filtered = this.kalman.process(rawLat, rawLon, accuracy || 10, now, rawSpeedMps);
     const lat = filtered.latitude;
     const lon = filtered.longitude;
     const currentSpeed = filtered.speedKmh;
@@ -552,10 +614,6 @@ class LiveTripService {
     this.activeTrip.currentLocation = { latitude: lat, longitude: lon };
     this.activeTrip.lastLocationUpdate = new Date().toISOString();
 
-    if (this.activeTrip.status === 'recording' && !this.activeTrip.telemetry.isAutoPaused) {
-      this.activeTrip.gpsStatus = 'locked';
-      this.activeTrip.gpsErrorMessage = undefined;
-    }
     if (accuracy !== undefined) {
       this.activeTrip.accuracyMeters = Math.round(accuracy);
     }
@@ -575,70 +633,86 @@ class LiveTripService {
         if (this.activeTrip.telemetry.stationaryDurationMs >= 25000 && !this.activeTrip.telemetry.isAutoPaused) {
           this.activeTrip.telemetry.isAutoPaused = true;
           this.activeTrip.gpsStatus = 'paused';
-          this.stopGpsWatch();
+          // Keep GPS watch alive so auto-resume can detect motion!
         }
-      } else {
-        // Vehicle is moving (speed >= 5.0 km/h)
+      } else if (currentSpeed >= 4.0) {
+        // Vehicle is moving again
         if (this.activeTrip.telemetry.isAutoPaused) {
           this.activeTrip.telemetry.isAutoPaused = false;
-          this.activeTrip.gpsStatus = 'locked';
-          this.startGpsWatch();
         }
         this.activeTrip.telemetry.stationaryDurationMs = 0;
         this.activeTrip.telemetry.movingDurationMs += dtMs;
-
-        // Calculate continuous moving average speed
-        const movingHours = this.activeTrip.telemetry.movingDurationMs / 3600000;
-        if (movingHours > 0.01) {
-          this.activeTrip.telemetry.averageSpeedKmh =
-            Math.round((this.activeTrip.distanceKm / movingHours) * 10) / 10;
-        }
+      }
+    } else {
+      if (currentSpeed >= 2.0) {
+        this.activeTrip.telemetry.movingDurationMs += dtMs;
+      } else {
+        this.activeTrip.telemetry.stationaryDurationMs += dtMs;
       }
     }
 
-    // Calculate distance from previous point
-    let deltaKm = 0;
+    if (!this.activeTrip.telemetry.isAutoPaused) {
+      this.activeTrip.gpsStatus = 'locked';
+      this.activeTrip.gpsErrorMessage = undefined;
+    }
+
+    // Calculate continuous moving average speed
+    const movingHours = this.activeTrip.telemetry.movingDurationMs / 3600000;
+    if (movingHours > 0.005) {
+      this.activeTrip.telemetry.averageSpeedKmh =
+        Math.round((this.activeTrip.distanceKm / movingHours) * 10) / 10;
+    }
+
+    // Calculate distance from previous point and accumulate real-time Odometer
     if (prevLocation) {
-      deltaKm = calculateDistanceKm(
+      const deltaKm = calculateDistanceKm(
         prevLocation.latitude,
         prevLocation.longitude,
         lat,
         lon
       );
+
+      // Accumulate distance whenever vehicle is moving and not in auto-paused state
+      const isMoving = currentSpeed >= 1.5 || (deltaKm * 1000 >= 3.0 && (accuracy || 10) <= 30);
+      if (isMoving && !this.activeTrip.telemetry.isAutoPaused && deltaKm > 0) {
+        this.activeTrip.distanceKm =
+          Math.round((this.activeTrip.distanceKm + deltaKm) * 100) / 100;
+      }
     }
 
-    // Record route point and accumulate odometer if moved significantly or first point
-    // Discards jitter smaller than 12 meters when stationary
-    if (!prevLocation || (deltaKm >= 0.012 && currentSpeed >= 2.0)) {
+    // Record route points for map visualization (every >= 8 meters or first point)
+    const points = this.activeTrip.route.points;
+    const lastPoint = points.length > 0 ? points[points.length - 1] : null;
+    const distFromLastPointKm = lastPoint
+      ? calculateDistanceKm(lastPoint.latitude, lastPoint.longitude, lat, lon)
+      : 999;
+
+    if (!lastPoint || distFromLastPointKm >= 0.008) {
       this.activeTrip.route.points.push({
         latitude: lat,
         longitude: lon,
         timestamp: new Date().toISOString(),
         speedKmh: currentSpeed,
       });
-
-      if (deltaKm > 0) {
-        this.activeTrip.distanceKm =
-          Math.round((this.activeTrip.distanceKm + deltaKm) * 100) / 100;
-      }
-
-      // Check if crossed into a new significant administrative district (> 8 km from last checkpoint)
-      const lastCheckpoint =
-        this.activeTrip.route.checkpoints[
-          this.activeTrip.route.checkpoints.length - 1
-        ];
-
-      if (
-        !lastCheckpoint ||
-        calculateDistanceKm(lastCheckpoint.latitude, lastCheckpoint.longitude, lat, lon) >= 8.0
-      ) {
-        const cp = await createCheckpointFromLocation(lat, lon);
-        if (!this.activeTrip) return;
-        this.activeTrip.route.checkpoints.push(cp);
-      }
-
-      this.notify();
     }
+
+    // Check if crossed into a new significant administrative district (> 8 km from last checkpoint)
+    const lastCheckpoint =
+      this.activeTrip.route.checkpoints[
+        this.activeTrip.route.checkpoints.length - 1
+      ];
+
+    if (
+      !lastCheckpoint ||
+      calculateDistanceKm(lastCheckpoint.latitude, lastCheckpoint.longitude, lat, lon) >= 8.0
+    ) {
+      const cp = await createCheckpointFromLocation(lat, lon);
+      if (!this.activeTrip) return;
+      this.activeTrip.route.checkpoints.push(cp);
+    }
+
+    // Always notify listeners so UI updates in REAL TIME!
+    this.notify();
   }
 }
 
