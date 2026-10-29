@@ -2,7 +2,7 @@ export type AdminLevel = 'province' | 'district' | 'ward' | 'landmark';
 
 export type TripTrackingStatus = 'recording' | 'paused' | 'finished';
 
-export type GpsSignalStatus = 'searching' | 'locked' | 'permission_denied' | 'error';
+export type GpsSignalStatus = 'searching' | 'locked' | 'permission_denied' | 'error' | 'paused';
 
 export interface RoutePoint {
   latitude: number;

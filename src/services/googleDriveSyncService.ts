@@ -21,11 +21,9 @@ declare global {
   }
 }
 
-export const DEFAULT_GOOGLE_CLIENT_ID =
-  '104276182934-explorer-minhton.apps.googleusercontent.com';
-
 const SYNC_FILE_NAME = 'moto-trip-cafe-explorer-sync.json';
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
+const DRIVE_SCOPE =
+  'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
 
 class GoogleDriveSyncService {
   private statusListeners: Set<(status: SyncStatus) => void> = new Set();
@@ -105,29 +103,36 @@ class GoogleDriveSyncService {
   }
 
   /**
-   * Initiates Google Identity Services OAuth 2.0 Account Picker with zero friction.
+   * Initiates Google Identity Services OAuth 2.0 Account Picker.
    */
-  public async requestGoogleAuth(customClientId?: string): Promise<string> {
-    const clientId = customClientId?.trim() || DEFAULT_GOOGLE_CLIENT_ID;
+  public async requestGoogleAuth(clientId: string): Promise<string> {
+    const trimmedId = clientId.trim();
+    if (!trimmedId) {
+      throw new Error(
+        'Vui lòng nhập Google OAuth Client ID của bạn để kết nối với Google Drive.'
+      );
+    }
 
     return new Promise((resolve, reject) => {
       // 1. If Google GIS script is ready in window:
       if (typeof window !== 'undefined' && window.google?.accounts?.oauth2) {
         try {
           const tokenClient = window.google.accounts.oauth2.initTokenClient({
-            client_id: clientId,
+            client_id: trimmedId,
             scope: DRIVE_SCOPE,
             prompt: 'select_account',
             callback: async (response) => {
               if (response.error || !response.access_token) {
-                reject(new Error(response.error || 'Đăng nhập Google bị hủy hoặc gặp lỗi'));
+                reject(
+                  new Error(response.error || 'Đăng nhập Google bị hủy hoặc gặp lỗi')
+                );
                 return;
               }
 
               const userEmail = await this.fetchGoogleUserProfile(response.access_token);
 
               const config: GoogleDriveConfig = {
-                clientId,
+                clientId: trimmedId,
                 accessToken: response.access_token,
                 expiresAt: Date.now() + 3500 * 1000,
                 userEmail: userEmail || 'Tài khoản Google đã kết nối',
@@ -149,45 +154,38 @@ class GoogleDriveSyncService {
       if (typeof window !== 'undefined') {
         const redirectUri = window.location.origin + window.location.pathname;
         const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
-          clientId
-        )}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(
+          trimmedId
+        )}&redirect_uri=${encodeURIComponent(
+          redirectUri
+        )}&response_type=token&scope=${encodeURIComponent(
           DRIVE_SCOPE
         )}&prompt=select_account`;
 
-        // If in standard web browser, we can open popup or redirect
         try {
           const popup = window.open(authUrl, '_blank', 'width=500,height=600');
           if (!popup || popup.closed) {
-            // Popup blocked, simulate instant local cloud sync profile for smooth experience
-            const mockToken = `mock-token-${Date.now()}`;
-            const config: GoogleDriveConfig = {
-              clientId,
-              accessToken: mockToken,
-              expiresAt: Date.now() + 86400 * 1000,
-              userEmail: 'explorer.minhton@gmail.com',
-              autoSync: true,
-            };
-            storageService.saveGoogleDriveConfig(config);
-            resolve(mockToken);
-            return;
+            window.location.href = authUrl;
           }
-        } catch {
-          // Fallback mock
+        } catch (e) {
+          reject(e);
         }
       }
-
-      // 3. Fallback for offline dev or test
-      const mockToken = `mock-token-${Date.now()}`;
-      const config: GoogleDriveConfig = {
-        clientId,
-        accessToken: mockToken,
-        expiresAt: Date.now() + 86400 * 1000,
-        userEmail: 'explorer.minhton@gmail.com',
-        autoSync: true,
-      };
-      storageService.saveGoogleDriveConfig(config);
-      resolve(mockToken);
     });
+  }
+
+  /**
+   * Simulates cloud sync for testing without requiring a Google Cloud project.
+   */
+  public async simulateTestCloudSync(email = 'pmtoan.explorer@gmail.com'): Promise<void> {
+    const config: GoogleDriveConfig = {
+      clientId: 'simulated-personal-drive',
+      accessToken: `mock-token-${Date.now()}`,
+      expiresAt: Date.now() + 86400 * 1000,
+      userEmail: email,
+      autoSync: true,
+    };
+    storageService.saveGoogleDriveConfig(config);
+    await this.syncWithDrive();
   }
 
   /**

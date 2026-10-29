@@ -133,6 +133,7 @@ class LiveTripService {
 
     this.stopGpsWatch();
     this.activeTrip.status = 'paused';
+    this.activeTrip.gpsStatus = 'paused';
     this.activeTrip.pausedAt = new Date().toISOString();
     this.notify();
   }
@@ -150,7 +151,8 @@ class LiveTripService {
     }
 
     this.activeTrip.status = 'recording';
-    this.activeTrip.gpsStatus = 'searching';
+    // If we already have a locked location fix, retain locked status
+    this.activeTrip.gpsStatus = this.activeTrip.currentLocation ? 'locked' : 'searching';
     this.notify();
     this.startGpsWatch();
     this.captureCurrentLocation(false);
@@ -360,17 +362,51 @@ class LiveTripService {
   private async captureCurrentLocation(isStart = false): Promise<void> {
     // 1. Try Native Capacitor Geolocation first
     if (Capacitor.isNativePlatform()) {
+      // Step 1: Fast cached / coarse network fix (under 2s, works immediately indoors & outdoors)
+      try {
+        const fastPos = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: false,
+          timeout: 4000,
+          maximumAge: 60000,
+        });
+        if (fastPos) {
+          await this.processAcquiredLocation(
+            fastPos.coords.latitude,
+            fastPos.coords.longitude,
+            fastPos.coords.accuracy,
+            isStart
+          );
+        }
+      } catch (fastErr: unknown) {
+        const msg = fastErr instanceof Error ? fastErr.message : String(fastErr);
+        if (msg.toLowerCase().includes('disabled') || msg.toLowerCase().includes('location service')) {
+          if (this.activeTrip) {
+            this.activeTrip.gpsStatus = 'error';
+            this.activeTrip.gpsErrorMessage = 'Vị trí (GPS) trên điện thoại đang tắt. Vui lòng bật Vị trí trong Cài đặt nhanh.';
+            this.notify();
+          }
+          return;
+        }
+      }
+
+      // Step 2: High accuracy GPS satellite fix
       try {
         const pos = await Geolocation.getCurrentPosition({
           enableHighAccuracy: true,
-          timeout: 10000,
+          timeout: 8000,
           maximumAge: 5000,
         });
-        await this.processAcquiredLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, isStart);
+        if (pos) {
+          await this.processAcquiredLocation(
+            pos.coords.latitude,
+            pos.coords.longitude,
+            pos.coords.accuracy,
+            isStart
+          );
+        }
         return;
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Lỗi định vị native';
-        console.warn('Capacitor getCurrentPosition fallback:', msg);
+        console.warn('Capacitor high-accuracy GPS acquisition note:', err);
       }
     }
 
@@ -379,7 +415,12 @@ class LiveTripService {
 
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        await this.processAcquiredLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, isStart);
+        await this.processAcquiredLocation(
+          pos.coords.latitude,
+          pos.coords.longitude,
+          pos.coords.accuracy,
+          isStart
+        );
       },
       (err) => {
         console.warn('getCurrentPosition fallback notice:', err.message);
@@ -388,7 +429,7 @@ class LiveTripService {
           this.handlePositionUpdate(10.7769, 106.7009, 10);
         }
       },
-      { timeout: 8000, enableHighAccuracy: true }
+      { timeout: 5000, enableHighAccuracy: false }
     );
   }
 
@@ -407,7 +448,7 @@ class LiveTripService {
         lon,
         formatTimeOnly(new Date(tripStartTime))
       );
-      if (!this.activeTrip || this.activeTrip.status !== 'recording') return;
+      if (!this.activeTrip) return;
       startCp.shortName = `${startCp.shortName} (Xuất phát)`;
       this.activeTrip.route.checkpoints.push(startCp);
       this.notify();
@@ -415,12 +456,15 @@ class LiveTripService {
   }
 
   private async handlePositionUpdate(lat: number, lon: number, accuracy?: number): Promise<void> {
-    if (!this.activeTrip || this.activeTrip.status !== 'recording') return;
+    if (!this.activeTrip) return;
 
     const prevLocation = this.activeTrip.currentLocation;
     this.activeTrip.currentLocation = { latitude: lat, longitude: lon };
     this.activeTrip.lastLocationUpdate = new Date().toISOString();
-    this.activeTrip.gpsStatus = 'locked';
+    if (this.activeTrip.status === 'recording') {
+      this.activeTrip.gpsStatus = 'locked';
+      this.activeTrip.gpsErrorMessage = undefined;
+    }
     if (accuracy !== undefined) {
       this.activeTrip.accuracyMeters = Math.round(accuracy);
     }
@@ -460,7 +504,7 @@ class LiveTripService {
         calculateDistanceKm(lastCheckpoint.latitude, lastCheckpoint.longitude, lat, lon) >= 8.0
       ) {
         const cp = await createCheckpointFromLocation(lat, lon);
-        if (!this.activeTrip || this.activeTrip.status !== 'recording') return;
+        if (!this.activeTrip) return;
         this.activeTrip.route.checkpoints.push(cp);
       }
 

@@ -63,7 +63,7 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
         </span>
       </div>
 
-      {/* GPS Permission Warning if Denied */}
+      {/* GPS Warning or Error Badge */}
       {activeTrip.gpsStatus === 'permission_denied' && (
         <div className="bg-rose-600 text-white p-2.5 rounded-2xl mb-2.5 text-xs font-bold flex items-center justify-between shadow-md">
           <div className="flex items-center gap-1.5">
@@ -82,22 +82,36 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
         </div>
       )}
 
-      {/* GPS Locked / Searching Badge */}
-      {!isPaused && activeTrip.gpsStatus !== 'permission_denied' && (
-        <div className="flex items-center gap-2 mb-2 text-[11px] font-medium text-emerald-100">
-          {activeTrip.gpsStatus === 'locked' ? (
-            <span className="inline-flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-lg text-white">
-              <span className="w-2 h-2 rounded-full bg-emerald-300"></span>
-              <span>GPS đã khóa tọa độ {activeTrip.accuracyMeters ? `(±${activeTrip.accuracyMeters}m)` : ''}</span>
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 bg-amber-500/30 px-2 py-0.5 rounded-lg text-amber-100">
-              <span className="w-2 h-2 rounded-full bg-amber-300 animate-ping"></span>
-              <span>Đang kết nối vệ tinh GPS ngoài trời...</span>
-            </span>
-          )}
+      {activeTrip.gpsStatus === 'error' && (
+        <div className="bg-amber-600 text-white p-2.5 rounded-2xl mb-2.5 text-xs font-bold flex items-center gap-1.5 shadow-md">
+          <span>⚠️</span>
+          <span>{activeTrip.gpsErrorMessage || 'GPS chưa có tín hiệu. Hãy bật Vị trí trên máy.'}</span>
         </div>
       )}
+
+      {/* GPS Status Indicator */}
+      {isPaused ? (
+        <div className="flex items-center gap-2 mb-2 text-[11px] font-medium text-amber-100">
+          <span className="inline-flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-lg text-white">
+            <span>⏸️</span>
+            <span>GPS đang tạm ngắt (Chống nóng máy & tiết kiệm pin)</span>
+          </span>
+        </div>
+      ) : activeTrip.gpsStatus === 'locked' ? (
+        <div className="flex items-center gap-2 mb-2 text-[11px] font-medium text-emerald-100">
+          <span className="inline-flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-lg text-white">
+            <span className="w-2 h-2 rounded-full bg-emerald-300"></span>
+            <span>GPS đã khóa tọa độ {activeTrip.accuracyMeters ? `(±${activeTrip.accuracyMeters}m)` : ''}</span>
+          </span>
+        </div>
+      ) : activeTrip.gpsStatus === 'searching' ? (
+        <div className="flex items-center gap-2 mb-2 text-[11px] font-medium text-emerald-100">
+          <span className="inline-flex items-center gap-1 bg-amber-500/30 px-2 py-0.5 rounded-lg text-amber-100">
+            <span className="w-2 h-2 rounded-full bg-amber-300 animate-ping"></span>
+            <span>Đang kết nối vệ tinh GPS ngoài trời...</span>
+          </span>
+        </div>
+      ) : null}
 
       {/* Main Odometer Area */}
       <div className="bg-white/10 hover:bg-white/15 p-3 rounded-2xl transition-all border border-white/20 mb-3">
