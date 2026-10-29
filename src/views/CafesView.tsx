@@ -10,6 +10,7 @@ import { Search, Plus } from 'lucide-react';
 export const CafesView: React.FC = () => {
   const [customCafes, setCustomCafes] = useState<Cafe[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [sourceTab, setSourceTab] = useState<'google_maps' | 'community'>('google_maps');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState('Tất cả');
   const [modalCafe, setModalCafe] = useState<Cafe | null | 'new'>(null);
@@ -24,8 +25,29 @@ export const CafesView: React.FC = () => {
     return [...customCafes, ...SEED_CAFES];
   }, [customCafes]);
 
+  const { googleMapsCount, communityCount } = useMemo(() => {
+    let gm = 0;
+    let cm = 0;
+    allCafes.forEach((c) => {
+      if (c.source === 'community') {
+        cm++;
+      } else {
+        gm++;
+      }
+    });
+    return { googleMapsCount: gm, communityCount: cm };
+  }, [allCafes]);
+
   const filteredCafes = useMemo(() => {
     return allCafes.filter((cafe) => {
+      // 0. Tab filter (Unless viewing "Quán Ruột ❤️" or search is active)
+      if (selectedDistrict !== 'Quán Ruột ❤️') {
+        const cafeSource = cafe.source || 'google_maps';
+        if (cafeSource !== sourceTab && !cafe.isCustom) {
+          return false;
+        }
+      }
+
       // 1. District filter
       if (selectedDistrict === 'Quán Ruột ❤️') {
         const isFav = favoriteIds.includes(cafe.id);
@@ -53,7 +75,7 @@ export const CafesView: React.FC = () => {
 
       return true;
     });
-  }, [allCafes, selectedDistrict, searchQuery, favoriteIds]);
+  }, [allCafes, sourceTab, selectedDistrict, searchQuery, favoriteIds]);
 
   const handleToggleFavorite = (cafeId: string) => {
     storageService.toggleFavoriteCafe(cafeId);
@@ -97,6 +119,49 @@ export const CafesView: React.FC = () => {
         >
           <Plus className="w-4 h-4" />
           <span>+ Quán Ruột</span>
+        </button>
+      </div>
+
+      {/* 2-TAB SOURCE SELECTOR: "Từ Google Maps" vs "Từ Cộng Đồng Review" */}
+      <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-200/80 rounded-2xl">
+        <button
+          onClick={() => setSourceTab('google_maps')}
+          className={`py-2 px-2.5 rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all ${
+            sourceTab === 'google_maps'
+              ? 'bg-white text-blue-700 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <span>🗺️ Từ Google Maps</span>
+          <span
+            className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+              sourceTab === 'google_maps'
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-slate-300/80 text-slate-700'
+            }`}
+          >
+            {googleMapsCount}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setSourceTab('community')}
+          className={`py-2 px-2.5 rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all ${
+            sourceTab === 'community'
+              ? 'bg-white text-purple-700 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <span>👥 Cộng Đồng Review</span>
+          <span
+            className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+              sourceTab === 'community'
+                ? 'bg-purple-100 text-purple-700'
+                : 'bg-slate-300/80 text-slate-700'
+            }`}
+          >
+            {communityCount}
+          </span>
         </button>
       </div>
 

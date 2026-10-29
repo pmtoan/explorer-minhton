@@ -35,6 +35,18 @@ export const CafeCard: React.FC<CafeCardProps> = ({
               <span className="px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-[11px]">
                 {cafe.district}
               </span>
+              {cafe.source === 'google_maps' && (
+                <span className="px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200/80 font-bold text-[10px] flex items-center gap-1">
+                  <span>🗺️</span>
+                  <span>{cafe.sourceInfo?.badgeText || 'Từ Google Maps'}</span>
+                </span>
+              )}
+              {cafe.source === 'community' && (
+                <span className="px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200/80 font-bold text-[10px] flex items-center gap-1">
+                  <span>👥</span>
+                  <span>{cafe.sourceInfo?.badgeText || 'Cộng đồng Review'}</span>
+                </span>
+              )}
               {cafe.isCustom && (
                 <span className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-600 border border-orange-200 font-bold text-[10px]">
                   Quán Ruột của tôi

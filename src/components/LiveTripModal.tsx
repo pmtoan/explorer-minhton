@@ -63,12 +63,37 @@ export const LiveTripModal: React.FC<LiveTripModalProps> = ({
           >
             <span
               className={`w-2 h-2 rounded-full ${
-                isPaused ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'
+                isPaused
+                  ? 'bg-amber-500'
+                  : activeTrip.gpsStatus === 'locked'
+                  ? 'bg-emerald-500 animate-pulse'
+                  : 'bg-rose-500 animate-ping'
               }`}
             ></span>
-            {isPaused ? 'GPS Đã tạm dừng' : 'GPS Đang ghi liên tục'}
+            {isPaused
+              ? 'GPS Đã tạm dừng'
+              : activeTrip.gpsStatus === 'locked'
+              ? `GPS Đã khóa (${activeTrip.accuracyMeters ? `±${activeTrip.accuracyMeters}m` : 'chuẩn'})`
+              : activeTrip.gpsStatus === 'permission_denied'
+              ? 'Chưa cấp quyền GPS'
+              : 'GPS đang kết nối...'}
           </span>
         </div>
+
+        {activeTrip.gpsStatus === 'permission_denied' && (
+          <div className="mx-4 mt-2 p-3 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-center justify-between">
+            <div>
+              <p className="font-bold">⚠️ Chưa được cấp quyền Vị trí!</p>
+              <p className="text-[11px] text-rose-600">Vui lòng bấm nút bên cạnh để cấp quyền GPS.</p>
+            </div>
+            <button
+              onClick={() => liveTripService.requestLocationPermission()}
+              className="px-3 py-1.5 bg-rose-600 text-white rounded-xl font-bold text-xs shadow-xs"
+            >
+              Cấp quyền
+            </button>
+          </div>
+        )}
 
         {/* Modal Scrollable Body */}
         <div className="p-4 space-y-4 overflow-y-auto">

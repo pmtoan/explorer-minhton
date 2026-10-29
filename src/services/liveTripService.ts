@@ -6,12 +6,15 @@ import {
   createCheckpointFromLocation,
 } from './geoService';
 import { buildGoogleMapsMultiStopUrl } from './googleMapsDirectionsService';
+import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
 
 type TripChangeListener = (trip: ActiveTrip | null) => void;
 
 class LiveTripService {
   private activeTrip: ActiveTrip | null = null;
-  private watchId: number | null = null;
+  private webWatchId: number | null = null;
+  private nativeWatchId: string | null = null;
   private listeners: Set<TripChangeListener> = new Set();
 
   constructor() {
@@ -54,6 +57,32 @@ class LiveTripService {
   }
 
   /**
+   * Explicitly checks and requests native or browser location permission.
+   * Returns true if permission is granted.
+   */
+  public async requestLocationPermission(): Promise<boolean> {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const check = await Geolocation.checkPermissions();
+        if (check.location === 'granted') {
+          return true;
+        }
+        const req = await Geolocation.requestPermissions();
+        return req.location === 'granted';
+      }
+
+      if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      console.warn('Lỗi kiểm tra quyền vị trí:', e);
+      return false;
+    }
+  }
+
+  /**
    * Starts a new live motorcycle trip.
    */
   public async startLiveTrip(title?: string): Promise<ActiveTrip> {
@@ -64,6 +93,9 @@ class LiveTripService {
     const now = new Date();
     const displayTime = formatDisplayStartTime(now);
     const defaultTitle = title || `Phượt ${formatShortDate(now)}`;
+
+    // Explicitly prompt for GPS permission on Android / Native device
+    const hasPermission = await this.requestLocationPermission();
 
     const newTrip: ActiveTrip = {
       id: `trip-${Date.now()}`,
@@ -77,6 +109,8 @@ class LiveTripService {
         checkpoints: [],
       },
       totalPauseDurationMs: 0,
+      gpsStatus: hasPermission ? 'searching' : 'permission_denied',
+      gpsErrorMessage: hasPermission ? undefined : 'Chưa được cấp quyền vị trí thiết bị',
     };
 
     this.activeTrip = newTrip;
@@ -116,6 +150,7 @@ class LiveTripService {
     }
 
     this.activeTrip.status = 'recording';
+    this.activeTrip.gpsStatus = 'searching';
     this.notify();
     this.startGpsWatch();
     this.captureCurrentLocation(false);
@@ -233,86 +268,162 @@ class LiveTripService {
   }
 
   // --- GPS INTERNAL LOGIC ---
-  private startGpsWatch(): void {
-    if (this.watchId !== null || typeof window === 'undefined') return;
+  private async startGpsWatch(): Promise<void> {
+    if (this.nativeWatchId !== null || this.webWatchId !== null) return;
 
-    if (!('geolocation' in navigator)) {
-      console.warn('Geolocation not supported in this browser.');
-      return;
+    // 1. Native Capacitor Geolocation (for Android APK / iOS)
+    if (Capacitor.isNativePlatform()) {
+      try {
+        this.nativeWatchId = await Geolocation.watchPosition(
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 3000,
+          },
+          (position, err) => {
+            if (err) {
+              console.warn('Native GPS error:', err.message);
+              if (this.activeTrip) {
+                this.activeTrip.gpsStatus = 'error';
+                this.activeTrip.gpsErrorMessage = err.message;
+                this.notify();
+              }
+              return;
+            }
+            if (position) {
+              this.handlePositionUpdate(
+                position.coords.latitude,
+                position.coords.longitude,
+                position.coords.accuracy
+              );
+            }
+          }
+        );
+        return;
+      } catch (e) {
+        console.warn('Không thể khởi chạy Capacitor native watchPosition, fallback browser:', e);
+      }
     }
 
-    try {
-      this.watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          this.handlePositionUpdate(
-            position.coords.latitude,
-            position.coords.longitude
-          );
-        },
-        (error) => {
-          console.warn('Geolocation watch error:', error.message);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 5000,
-        }
-      );
-    } catch (e) {
-      console.error('Failed to initiate watchPosition:', e);
+    // 2. Web browser navigator.geolocation fallback
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      try {
+        this.webWatchId = navigator.geolocation.watchPosition(
+          (position) => {
+            this.handlePositionUpdate(
+              position.coords.latitude,
+              position.coords.longitude,
+              position.coords.accuracy
+            );
+          },
+          (error) => {
+            console.warn('Geolocation watch error:', error.message);
+            if (this.activeTrip) {
+              this.activeTrip.gpsStatus =
+                error.code === error.PERMISSION_DENIED ? 'permission_denied' : 'error';
+              this.activeTrip.gpsErrorMessage = error.message;
+              this.notify();
+            }
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 5000,
+          }
+        );
+      } catch (e) {
+        console.error('Failed to initiate watchPosition:', e);
+      }
     }
   }
 
   private stopGpsWatch(): void {
-    if (this.watchId !== null && typeof window !== 'undefined') {
+    if (this.nativeWatchId !== null) {
       try {
-        navigator.geolocation.clearWatch(this.watchId);
+        Geolocation.clearWatch({ id: this.nativeWatchId });
       } catch (e) {
-        console.warn('Error clearing watchPosition:', e);
+        console.warn('Error clearing native watch:', e);
       }
-      this.watchId = null;
+      this.nativeWatchId = null;
+    }
+
+    if (this.webWatchId !== null && typeof window !== 'undefined') {
+      try {
+        navigator.geolocation.clearWatch(this.webWatchId);
+      } catch (e) {
+        console.warn('Error clearing web watch:', e);
+      }
+      this.webWatchId = null;
     }
   }
 
-  private captureCurrentLocation(isStart = false): void {
+  private async captureCurrentLocation(isStart = false): Promise<void> {
+    // 1. Try Native Capacitor Geolocation first
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const pos = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 5000,
+        });
+        await this.processAcquiredLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, isStart);
+        return;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Lỗi định vị native';
+        console.warn('Capacitor getCurrentPosition fallback:', msg);
+      }
+    }
+
+    // 2. Fallback to Web navigator.geolocation
     if (typeof window === 'undefined' || !('geolocation' in navigator)) return;
 
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        this.handlePositionUpdate(lat, lon);
-
-        if (isStart && this.activeTrip && this.activeTrip.route.checkpoints.length === 0) {
-          const tripStartTime = this.activeTrip.startTime;
-          const startCp = await createCheckpointFromLocation(
-            lat,
-            lon,
-            formatTimeOnly(new Date(tripStartTime))
-          );
-          if (!this.activeTrip || this.activeTrip.status !== 'recording') return;
-          startCp.shortName = `${startCp.shortName} (Xuất phát)`;
-          this.activeTrip.route.checkpoints.push(startCp);
-          this.notify();
-        }
+        await this.processAcquiredLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, isStart);
       },
       (err) => {
         console.warn('getCurrentPosition fallback notice:', err.message);
-        // Fallback simulated initial point for testing or offline dev
+        // Fallback default coordinates for offline emulator/testing
         if (isStart && this.activeTrip && this.activeTrip.route.checkpoints.length === 0) {
-          this.handlePositionUpdate(10.7769, 106.7009);
+          this.handlePositionUpdate(10.7769, 106.7009, 10);
         }
       },
       { timeout: 8000, enableHighAccuracy: true }
     );
   }
 
-  private async handlePositionUpdate(lat: number, lon: number): Promise<void> {
+  private async processAcquiredLocation(
+    lat: number,
+    lon: number,
+    accuracy?: number,
+    isStart = false
+  ): Promise<void> {
+    this.handlePositionUpdate(lat, lon, accuracy);
+
+    if (isStart && this.activeTrip && this.activeTrip.route.checkpoints.length === 0) {
+      const tripStartTime = this.activeTrip.startTime;
+      const startCp = await createCheckpointFromLocation(
+        lat,
+        lon,
+        formatTimeOnly(new Date(tripStartTime))
+      );
+      if (!this.activeTrip || this.activeTrip.status !== 'recording') return;
+      startCp.shortName = `${startCp.shortName} (Xuất phát)`;
+      this.activeTrip.route.checkpoints.push(startCp);
+      this.notify();
+    }
+  }
+
+  private async handlePositionUpdate(lat: number, lon: number, accuracy?: number): Promise<void> {
     if (!this.activeTrip || this.activeTrip.status !== 'recording') return;
 
     const prevLocation = this.activeTrip.currentLocation;
     this.activeTrip.currentLocation = { latitude: lat, longitude: lon };
     this.activeTrip.lastLocationUpdate = new Date().toISOString();
+    this.activeTrip.gpsStatus = 'locked';
+    if (accuracy !== undefined) {
+      this.activeTrip.accuracyMeters = Math.round(accuracy);
+    }
 
     // Check distance from previous point
     let deltaKm = 0;
@@ -338,7 +449,7 @@ class LiveTripService {
           Math.round((this.activeTrip.distanceKm + deltaKm) * 10) / 10;
       }
 
-      // Check if crossed into a new significant administrative district (e.g. > 5 km from last checkpoint)
+      // Check if crossed into a new significant administrative district (e.g. > 8 km from last checkpoint)
       const lastCheckpoint =
         this.activeTrip.route.checkpoints[
           this.activeTrip.route.checkpoints.length - 1

@@ -18,6 +18,14 @@ export type SaigonDistrict =
   | 'Nhà Bè'
   | 'Khác';
 
+export type CafeSource = 'google_maps' | 'community';
+
+export interface CafeSourceInfo {
+  sourceName?: string; // e.g. "Google Maps Top 1", "Hội Quán Biker Sài Gòn", "Foody / TikTok"
+  reviewCount?: number; // e.g. 1450
+  badgeText?: string; // e.g. "Google Maps 4.8★ (1.4k đánh giá)" | "Cộng đồng Biker Review"
+}
+
 export interface Cafe {
   id: string;
   name: string;
@@ -31,6 +39,8 @@ export interface Cafe {
   isCustom?: boolean;
   isFavorite?: boolean;
   parkingInfo?: string;
+  source?: CafeSource; // 'google_maps' or 'community'
+  sourceInfo?: CafeSourceInfo;
   createdAt: string;
   updatedAt: string;
   isDeleted?: boolean;

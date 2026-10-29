@@ -63,6 +63,42 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
         </span>
       </div>
 
+      {/* GPS Permission Warning if Denied */}
+      {activeTrip.gpsStatus === 'permission_denied' && (
+        <div className="bg-rose-600 text-white p-2.5 rounded-2xl mb-2.5 text-xs font-bold flex items-center justify-between shadow-md">
+          <div className="flex items-center gap-1.5">
+            <span>⚠️</span>
+            <span>Chưa cấp quyền GPS vị trí!</span>
+          </div>
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              await liveTripService.requestLocationPermission();
+            }}
+            className="px-2.5 py-1 bg-white text-rose-700 rounded-xl text-[11px] font-black hover:bg-rose-50 transition-colors shadow-xs"
+          >
+            Cấp quyền ngay
+          </button>
+        </div>
+      )}
+
+      {/* GPS Locked / Searching Badge */}
+      {!isPaused && activeTrip.gpsStatus !== 'permission_denied' && (
+        <div className="flex items-center gap-2 mb-2 text-[11px] font-medium text-emerald-100">
+          {activeTrip.gpsStatus === 'locked' ? (
+            <span className="inline-flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-lg text-white">
+              <span className="w-2 h-2 rounded-full bg-emerald-300"></span>
+              <span>GPS đã khóa tọa độ {activeTrip.accuracyMeters ? `(±${activeTrip.accuracyMeters}m)` : ''}</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 bg-amber-500/30 px-2 py-0.5 rounded-lg text-amber-100">
+              <span className="w-2 h-2 rounded-full bg-amber-300 animate-ping"></span>
+              <span>Đang kết nối vệ tinh GPS ngoài trời...</span>
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Main Odometer Area */}
       <div className="bg-white/10 hover:bg-white/15 p-3 rounded-2xl transition-all border border-white/20 mb-3">
         <div className="flex items-center justify-between text-xs font-medium text-white/90">

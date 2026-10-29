@@ -2,6 +2,8 @@ export type AdminLevel = 'province' | 'district' | 'ward' | 'landmark';
 
 export type TripTrackingStatus = 'recording' | 'paused' | 'finished';
 
+export type GpsSignalStatus = 'searching' | 'locked' | 'permission_denied' | 'error';
+
 export interface RoutePoint {
   latitude: number;
   longitude: number;
@@ -39,6 +41,9 @@ export interface ActiveTrip {
   lastLocationUpdate?: string;
   pausedAt?: string;
   totalPauseDurationMs: number;
+  gpsStatus?: GpsSignalStatus;
+  accuracyMeters?: number;
+  gpsErrorMessage?: string;
 }
 
 export interface Trip {
