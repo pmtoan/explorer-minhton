@@ -28,7 +28,6 @@ import {
   RotateCcw,
   Flag,
   Loader2,
-  LocateFixed,
   Layers,
   Volume2,
   VolumeX,
@@ -329,9 +328,7 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
   };
 
   const cycleMapStyle = () => {
-    if (mapStyle === 'vector3d') setMapStyle('street');
-    else if (mapStyle === 'street') setMapStyle('satellite');
-    else setMapStyle('vector3d');
+    setMapStyle(mapStyle === 'vector3d' ? 'satellite' : 'vector3d');
   };
 
   // Compute live navigation progress
@@ -452,11 +449,7 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
                   >
                     <Layers className="w-3.5 h-3.5 text-blue-600" />
                     <span>
-                      {mapStyle === 'vector3d'
-                        ? '3D Tự nhiên'
-                        : mapStyle === 'street'
-                        ? 'GG Đường phố'
-                        : 'GG Vệ tinh'}
+                      {mapStyle === 'vector3d' ? 'Bản đồ chuẩn' : 'Vệ tinh'}
                     </span>
                   </button>
                 </div>
@@ -672,14 +665,14 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
          ========================================================================== */}
       {mode === 'navigating' && (
         <>
-          {/* 1. TOP GOOGLE MAPS HIGHWAY SIGN GREEN TURN BANNER (#0d652d) */}
+          {/* 1. TOP GOOGLE MAPS TEAL-GREEN TURN BANNER (#005a5b) */}
           <div className="relative z-[500] p-3 pointer-events-none">
             <div className="max-w-lg mx-auto">
-              <div className="pointer-events-auto bg-[#0d652d] rounded-t-3xl rounded-br-3xl p-4 shadow-2xl border border-[#1e8e3e]/40 flex items-center justify-between gap-3">
+              <div className="pointer-events-auto bg-[#005a5b] rounded-t-3xl rounded-br-3xl px-5 py-4 shadow-2xl border border-teal-400/25 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="flex flex-col items-center justify-center flex-shrink-0 min-w-[56px]">
+                  <div className="flex flex-col items-center justify-center flex-shrink-0 min-w-[48px]">
                     {renderManeuverIcon(liveProgress?.nextStep.icon)}
-                    <span className="text-xs font-black text-white mt-1 tracking-tight">
+                    <span className="text-xs font-extrabold text-teal-100 mt-1 tracking-tight">
                       {liveProgress
                         ? liveProgress.distanceToNextTurnMeters >= 1000
                           ? `${(liveProgress.distanceToNextTurnMeters / 1000).toFixed(1)} km`
@@ -688,13 +681,11 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
                     </span>
                   </div>
 
-                  <div className="h-11 w-[1.5px] bg-white/20 flex-shrink-0" />
-
                   <div className="min-w-0">
-                    <div className="text-xs font-bold text-emerald-200 uppercase tracking-wide">
-                      {liveProgress?.nextStep.instruction || 'Đi thẳng theo đường'}
+                    <div className="text-xs font-semibold text-teal-100">
+                      {liveProgress?.nextStep.instruction || 'về phía'}
                     </div>
-                    <div className="text-xl font-black text-white leading-snug truncate">
+                    <div className="text-2xl font-bold text-white leading-tight truncate">
                       {liveProgress?.nextStep.roadName || selectedPlace?.name}
                     </div>
                   </div>
@@ -706,7 +697,7 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
                   className={`px-3 py-2 rounded-2xl text-xs font-extrabold flex items-center gap-1.5 flex-shrink-0 border transition-all active:scale-95 ${
                     isSimulatingDrive
                       ? 'bg-amber-400 text-slate-950 border-amber-200 shadow-lg'
-                      : 'bg-[#094d22] hover:bg-[#073b1a] text-emerald-100 border-white/15'
+                      : 'bg-[#004445] hover:bg-[#003637] text-teal-50 border-white/15'
                   }`}
                   title="Chạy thử mô phỏng trên đường"
                 >
@@ -717,7 +708,7 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
                     </>
                   ) : (
                     <>
-                      <Play className="w-3.5 h-3.5 fill-emerald-200" />
+                      <Play className="w-3.5 h-3.5 fill-teal-100" />
                       <span>Chạy thử</span>
                     </>
                   )}
@@ -725,143 +716,137 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
               </div>
 
               {secondStep && (
-                <div className="pointer-events-auto inline-flex items-center gap-2 bg-[#094d22] text-white px-4 py-1.5 rounded-b-2xl shadow-lg border-x border-b border-[#1e8e3e]/30 text-xs font-bold">
-                  <span className="text-emerald-200">Tiếp theo:</span>
-                  <span className="font-extrabold text-white truncate max-w-[210px]">
-                    {secondStep.instruction} ({secondStep.roadName})
-                  </span>
+                <div className="pointer-events-auto inline-flex items-center gap-2 bg-[#004445] text-white px-4 py-2 rounded-b-2xl shadow-lg text-sm font-bold">
+                  <span className="text-teal-100">Sau đó</span>
+                  <CornerUpRight className="w-4 h-4 text-white" />
                 </div>
               )}
             </div>
           </div>
 
-          {/* 2. LEFT FLOATING SPEEDOMETER & RE-CENTER PILL */}
+          {/* 2. LEFT FLOATING "VỀ GIỮA" PILL & SPEEDOMETER */}
           <div className="absolute bottom-28 left-4 z-[500] flex flex-col items-start gap-2.5">
-            {!isFollowingVehicle && (
-              <button
-                onClick={() => setIsFollowingVehicle(true)}
-                className="px-4 py-2.5 rounded-full bg-white text-[#1a73e8] font-extrabold text-xs shadow-2xl border border-slate-200 flex items-center gap-2 animate-bounce"
-              >
-                <LocateFixed className="w-4 h-4 text-[#1a73e8]" />
-                <span>Định vị lại</span>
-              </button>
-            )}
+            <button
+              onClick={() => setIsFollowingVehicle(true)}
+              className="px-4 py-2.5 rounded-full bg-white text-slate-800 font-bold text-sm shadow-xl border border-slate-200 flex items-center gap-2 active:scale-95 transition-transform"
+            >
+              <Navigation className="w-4 h-4 fill-[#00695c] text-[#00695c]" />
+              <span>Về giữa</span>
+            </button>
 
             <div className="flex items-center gap-2">
               <div
-                className={`w-16 h-16 rounded-full bg-white text-slate-900 shadow-2xl border-4 flex flex-col items-center justify-center ${
-                  displaySpeedKmh >= 60 ? 'border-rose-500' : 'border-[#1a73e8]'
+                className={`w-14 h-14 rounded-full bg-white text-slate-900 shadow-xl border-2 flex flex-col items-center justify-center ${
+                  displaySpeedKmh >= 60 ? 'border-rose-500' : 'border-slate-200'
                 }`}
               >
-                <span className="text-xl font-black leading-none tracking-tight">
+                <span className="text-lg font-black leading-none">
                   {Math.round(displaySpeedKmh)}
                 </span>
-                <span className="text-[10px] font-bold text-slate-500 mt-0.5">
+                <span className="text-[9px] font-bold text-slate-500 mt-0.5">
                   km/h
                 </span>
               </div>
 
-              <div className="bg-slate-900/90 backdrop-blur-md text-white px-3 py-2 rounded-2xl shadow-xl border border-slate-700/80">
-                <div className="text-[10px] font-bold text-slate-400 uppercase">
-                  Đã đi được
+              <div className="bg-white/95 backdrop-blur-md text-slate-800 px-3 py-1.5 rounded-2xl shadow-xl border border-slate-200">
+                <div className="text-[9px] font-bold text-slate-400 uppercase">
+                  Đã đi
                 </div>
-                <div className="text-sm font-black text-emerald-400">
+                <div className="text-xs font-black text-[#00695c]">
                   {activeTrip.distanceKm.toFixed(2)} km
                 </div>
               </div>
             </div>
           </div>
 
-          {/* 3. RIGHT FLOATING GOOGLE MAPS CIRCULAR CONTROLS */}
-          <div className="absolute right-4 top-36 z-[500] flex flex-col gap-2.5">
-            <button
-              onClick={() => setVoiceEnabled(!voiceEnabled)}
-              className="w-12 h-12 rounded-full bg-white text-slate-800 shadow-xl border border-slate-200 flex items-center justify-center transition-transform active:scale-90"
-              title="Bật/Tắt giọng nói"
-            >
-              {voiceEnabled ? (
-                <Volume2 className="w-5 h-5 text-[#1a73e8]" />
-              ) : (
-                <VolumeX className="w-5 h-5 text-slate-400" />
-              )}
-            </button>
-
+          {/* 3. RIGHT FLOATING GOOGLE MAPS CIRCULAR WHITE BUTTONS */}
+          <div className="absolute right-4 bottom-32 z-[500] flex flex-col gap-3">
+            {/* Compass (3D Tilt vs 2D Flat) */}
             <button
               onClick={() => setIs3DMode(!is3DMode)}
-              className="w-12 h-12 rounded-full bg-white text-slate-800 shadow-xl border border-slate-200 flex flex-col items-center justify-center transition-transform active:scale-90"
-              title="Đổi góc nhìn 3D Nghiêng / 2D Phẳng"
+              className="w-13 h-13 w-[52px] h-[52px] rounded-full bg-white text-slate-800 shadow-xl border border-slate-200/80 flex items-center justify-center transition-transform active:scale-90"
+              title="Đổi góc nhìn 3D / 2D"
             >
               <Compass
-                className={`w-5 h-5 ${
-                  is3DMode ? 'text-[#ea4335]' : 'text-slate-600'
-                }`}
+                className="w-6 h-6 text-[#ea4335]"
                 style={{
                   transform: is3DMode
                     ? `rotate(${-effectiveBearing}deg)`
                     : 'none',
                 }}
               />
-              <span className="text-[9px] font-black text-slate-600 leading-none mt-0.5">
-                {is3DMode ? '3D' : '2D'}
-              </span>
             </button>
 
+            {/* Search Button */}
             <button
-              onClick={cycleMapStyle}
-              className="w-12 h-12 rounded-full bg-white text-slate-800 shadow-xl border border-slate-200 flex flex-col items-center justify-center transition-transform active:scale-90"
-              title="Đổi nền bản đồ (3D Tự nhiên / Đường phố / Vệ tinh)"
+              onClick={() => {
+                setIsSimulatingDrive(false);
+                setMode('overview');
+                setIsSearchDrawerOpen(true);
+              }}
+              className="w-[52px] h-[52px] rounded-full bg-white text-slate-800 shadow-xl border border-slate-200/80 flex items-center justify-center transition-transform active:scale-90"
+              title="Tìm điểm đến khác"
             >
-              <Layers className="w-4 h-4 text-[#1a73e8]" />
-              <span className="text-[8px] font-black text-slate-600 leading-none mt-0.5">
-                {mapStyle === 'vector3d'
-                  ? 'Vector'
-                  : mapStyle === 'street'
-                  ? 'Phố'
-                  : 'Vệ tinh'}
-              </span>
+              <Search className="w-5 h-5 text-slate-700 stroke-[2.5]" />
+            </button>
+
+            {/* Voice Mute / Unmute */}
+            <button
+              onClick={() => setVoiceEnabled(!voiceEnabled)}
+              className="w-[52px] h-[52px] rounded-full bg-white text-slate-800 shadow-xl border border-slate-200/80 flex items-center justify-center transition-transform active:scale-90"
+              title="Bật/Tắt giọng nói"
+            >
+              {voiceEnabled ? (
+                <Volume2 className="w-5 h-5 text-slate-800 stroke-[2.5]" />
+              ) : (
+                <VolumeX className="w-5 h-5 text-[#d93025] stroke-[2.5]" />
+              )}
+            </button>
+
+            {/* Route Overview Toggle */}
+            <button
+              onClick={() => {
+                setIsSimulatingDrive(false);
+                setMode('overview');
+                setIsSearchDrawerOpen(false);
+              }}
+              className="w-[52px] h-[52px] rounded-full bg-white text-slate-800 shadow-xl border border-slate-200/80 flex items-center justify-center transition-transform active:scale-90"
+              title="Xem toàn cảnh lộ trình"
+            >
+              <GitFork className="w-5 h-5 text-slate-800 stroke-[2.5]" />
             </button>
           </div>
 
           {/* 4. BOTTOM GOOGLE MAPS DRIVING FOOTER BAR */}
-          <div className="mt-auto relative z-[500] bg-white text-slate-900 rounded-t-3xl px-4 py-3.5 pb-5 shadow-[0_-8px_30px_rgba(0,0,0,0.18)] border-t border-slate-200">
+          <div className="mt-auto relative z-[500] bg-white text-slate-900 rounded-t-3xl px-5 pt-2.5 pb-5 shadow-[0_-8px_30px_rgba(0,0,0,0.15)] border-t border-slate-200">
+            <div className="w-10 h-1 bg-slate-300 rounded-full mx-auto mb-2.5" />
             <div className="max-w-lg mx-auto flex items-center justify-between gap-3">
-              {/* Left: Exit Navigation (X) */}
-              <button
-                onClick={onClose}
-                className="w-12 h-12 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center flex-shrink-0 transition-colors active:scale-95"
-                title="Thoát màn hình dẫn đường"
-              >
-                <X className="w-6 h-6 stroke-[2.5]" />
-              </button>
-
-              {/* Center: Big Green Minutes + Distance & ETA */}
-              <div className="text-center flex-1 min-w-0">
-                <div className="text-2xl font-black text-[#188038] leading-tight">
-                  {liveProgress?.remainingDurationMin ??
-                    calculatedRoute?.totalDurationMin ??
-                    1}{' '}
-                  phút
+              {/* Left: Minutes + Distance & Arrival Time */}
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-2xl font-black text-[#188038] leading-tight">
+                    {liveProgress?.remainingDurationMin ??
+                      calculatedRoute?.totalDurationMin ??
+                      1}{' '}
+                    phút
+                  </span>
+                  <span className="text-base">🍃</span>
                 </div>
-                <div className="text-xs font-bold text-slate-500 truncate mt-0.5">
+                <div className="text-sm font-medium text-slate-600 truncate mt-0.5">
                   {liveProgress?.remainingDistanceKm ??
                     calculatedRoute?.totalDistanceKm ??
                     0}{' '}
-                  km • Đến lúc{' '}
+                  km •{' '}
                   {liveProgress?.etaText || calculatedRoute?.etaText || '--:--'}
                 </div>
               </div>
 
-              {/* Right: Switch back to Mode 1 (Route Overview) */}
+              {/* Right: Red "Thoát" Pill Button */}
               <button
-                onClick={() => {
-                  setIsSimulatingDrive(false);
-                  setMode('overview');
-                }}
-                className="px-3.5 h-12 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1.5 flex-shrink-0 transition-colors active:scale-95"
-                title="Xem toàn cảnh bản đồ lộ trình"
+                onClick={onClose}
+                className="px-6 py-3 rounded-full bg-[#d93025] hover:bg-[#b3261e] text-white font-bold text-sm shadow-md transition-all active:scale-95 flex-shrink-0"
               >
-                <GitFork className="w-4 h-4 stroke-[2.2] text-[#1a73e8]" />
-                <span>Toàn cảnh</span>
+                Thoát
               </button>
             </div>
           </div>

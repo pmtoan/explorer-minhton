@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import { Plus, Minus } from 'lucide-react';
 
-export type MapLayerStyle = 'vector3d' | 'street' | 'satellite';
+export type MapLayerStyle = 'vector3d' | 'satellite';
 
 interface WazeNavigationMapProps {
   currentLocation: { latitude: number; longitude: number };
@@ -23,19 +23,20 @@ interface WazeNavigationMapProps {
   onMapClickSelect?: (lat: number, lon: number) => void;
 }
 
-const VECTOR_3D_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
+// OpenFreeMap Bright Vector Style: Crisp roads, upright labels at any rotation/pitch, natural Google Maps palette
+const VECTOR_STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
 
-function createGoogleRasterStyle(type: 'm' | 'y'): maplibregl.StyleSpecification {
+function createGoogleSatelliteStyle(): maplibregl.StyleSpecification {
   return {
     version: 8,
     sources: {
-      'google-tiles': {
+      'google-sat': {
         type: 'raster',
         tiles: [
-          `https://mt0.google.com/vt/lyrs=${type}&x={x}&y={y}&z={z}&hl=vi`,
-          `https://mt1.google.com/vt/lyrs=${type}&x={x}&y={y}&z={z}&hl=vi`,
-          `https://mt2.google.com/vt/lyrs=${type}&x={x}&y={y}&z={z}&hl=vi`,
-          `https://mt3.google.com/vt/lyrs=${type}&x={x}&y={y}&z={z}&hl=vi`,
+          'https://mt0.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=vi',
+          'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=vi',
+          'https://mt2.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=vi',
+          'https://mt3.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=vi',
         ],
         tileSize: 256,
         maxzoom: 20,
@@ -43,9 +44,9 @@ function createGoogleRasterStyle(type: 'm' | 'y'): maplibregl.StyleSpecification
     },
     layers: [
       {
-        id: 'google-raster-layer',
+        id: 'google-sat-layer',
         type: 'raster',
-        source: 'google-tiles',
+        source: 'google-sat',
         minzoom: 0,
         maxzoom: 20,
       },
@@ -69,15 +70,32 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const vehicleMarkerRef = useRef<maplibregl.Marker | null>(null);
-  const vehicleArrowElRef = useRef<HTMLDivElement | null>(null);
   const destMarkerRef = useRef<maplibregl.Marker | null>(null);
   const prevNavigatingRef = useRef<boolean>(false);
+  const prevStyleRef = useRef<MapLayerStyle>(mapStyle);
 
-  // Helper to inject or update GeoJSON route & traveled layers on the WebGL canvas
-  const syncRouteLayers = (map: maplibregl.Map) => {
-    if (!map.isStyleLoaded()) return;
+  // Store latest route & traveled coordinates in refs so WebGL event callbacks never use stale closures!
+  const routeCoordsRef = useRef<[number, number][]>(routeCoordinates);
+  routeCoordsRef.current = routeCoordinates;
 
-    const geojsonCoords = routeCoordinates.map(([lat, lon]) => [lon, lat]);
+  const traveledPtsRef = useRef<{ latitude: number; longitude: number }[]>(
+    traveledPoints
+  );
+  traveledPtsRef.current = traveledPoints;
+
+  // Draw or update the Google Maps Electric Blue Route Line on the WebGL map
+  const drawRouteOnMap = () => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (!map.isStyleLoaded()) {
+      map.once('idle', () => drawRouteOnMap());
+      return;
+    }
+
+    const latestRoute = routeCoordsRef.current;
+    const geojsonCoords = latestRoute.map(([lat, lon]) => [lon, lat]);
+
     const routeGeoJson: GeoJSON.Feature<GeoJSON.LineString> = {
       type: 'Feature',
       properties: {},
@@ -87,116 +105,120 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
       },
     };
 
-    const existingRouteSource = map.getSource(
-      'gmaps-route-source'
-    ) as maplibregl.GeoJSONSource | undefined;
+    try {
+      const existingRouteSource = map.getSource(
+        'gmaps-route-source'
+      ) as maplibregl.GeoJSONSource | undefined;
 
-    if (existingRouteSource) {
-      existingRouteSource.setData(routeGeoJson);
-    } else {
-      map.addSource('gmaps-route-source', {
-        type: 'geojson',
-        data: routeGeoJson,
-      });
+      if (existingRouteSource) {
+        existingRouteSource.setData(routeGeoJson);
+      } else {
+        map.addSource('gmaps-route-source', {
+          type: 'geojson',
+          data: routeGeoJson,
+        });
 
-      // Outer dark blue casing (#174ea6)
-      map.addLayer({
-        id: 'gmaps-route-casing',
-        type: 'line',
-        source: 'gmaps-route-source',
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round',
+        // 1. Outer Road Casing Shadow (#1e1b4b / Dark Navy)
+        map.addLayer({
+          id: 'gmaps-route-casing',
+          type: 'line',
+          source: 'gmaps-route-source',
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round',
+          },
+          paint: {
+            'line-color': '#1e1b4b',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 9, 18, 16],
+            'line-opacity': 0.95,
+          },
+        });
+
+        // 2. Inner Google Maps Vibrant Electric Blue (#3b3eff / #2962ff)
+        map.addLayer({
+          id: 'gmaps-route-core',
+          type: 'line',
+          source: 'gmaps-route-source',
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round',
+          },
+          paint: {
+            'line-color': '#3742fa',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 5.5, 18, 10.5],
+            'line-opacity': 1,
+          },
+        });
+      }
+
+      // Traveled GPS Breadcrumb Trail
+      const latestTraveled = traveledPtsRef.current;
+      const traveledCoords = latestTraveled.map((p) => [
+        p.longitude,
+        p.latitude,
+      ]);
+      const traveledGeoJson: GeoJSON.Feature<GeoJSON.LineString> = {
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'LineString',
+          coordinates: traveledCoords,
         },
-        paint: {
-          'line-color': '#174ea6',
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 7, 18, 14],
-          'line-opacity': 0.92,
-        },
-      });
+      };
 
-      // Inner Google Maps Royal Blue (#4285f4)
-      map.addLayer({
-        id: 'gmaps-route-core',
-        type: 'line',
-        source: 'gmaps-route-source',
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round',
-        },
-        paint: {
-          'line-color': '#4285f4',
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 4.5, 18, 9],
-          'line-opacity': 1,
-        },
-      });
-    }
+      const existingTraveledSource = map.getSource(
+        'gmaps-traveled-source'
+      ) as maplibregl.GeoJSONSource | undefined;
 
-    // Traveled GPS Breadcrumb Trail
-    const traveledCoords = traveledPoints.map((p) => [p.longitude, p.latitude]);
-    const traveledGeoJson: GeoJSON.Feature<GeoJSON.LineString> = {
-      type: 'Feature',
-      properties: {},
-      geometry: {
-        type: 'LineString',
-        coordinates: traveledCoords,
-      },
-    };
+      if (existingTraveledSource) {
+        existingTraveledSource.setData(traveledGeoJson);
+      } else {
+        map.addSource('gmaps-traveled-source', {
+          type: 'geojson',
+          data: traveledGeoJson,
+        });
 
-    const existingTraveledSource = map.getSource(
-      'gmaps-traveled-source'
-    ) as maplibregl.GeoJSONSource | undefined;
-
-    if (existingTraveledSource) {
-      existingTraveledSource.setData(traveledGeoJson);
-    } else {
-      map.addSource('gmaps-traveled-source', {
-        type: 'geojson',
-        data: traveledGeoJson,
-      });
-
-      map.addLayer({
-        id: 'gmaps-traveled-line',
-        type: 'line',
-        source: 'gmaps-traveled-source',
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round',
-        },
-        paint: {
-          'line-color': '#9aa0a6',
-          'line-width': 5,
-          'line-opacity': 0.75,
-        },
-      });
+        map.addLayer({
+          id: 'gmaps-traveled-line',
+          type: 'line',
+          source: 'gmaps-traveled-source',
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round',
+          },
+          paint: {
+            'line-color': '#64748b',
+            'line-width': 6,
+            'line-opacity': 0.8,
+          },
+        });
+      }
+    } catch {
+      // If style is mid-transition, retry on next idle frame
+      map.once('idle', () => drawRouteOnMap());
     }
   };
 
-  // 1. Initialize WebGL MapLibre GL Map
+  // 1. Initialize WebGL MapLibre GL Map once
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
     const initialStyle =
-      mapStyle === 'vector3d'
-        ? VECTOR_3D_STYLE_URL
-        : mapStyle === 'satellite'
-        ? createGoogleRasterStyle('y')
-        : createGoogleRasterStyle('m');
+      mapStyle === 'satellite' ? createGoogleSatelliteStyle() : VECTOR_STYLE_URL;
 
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: initialStyle,
       center: [currentLocation.longitude, currentLocation.latitude],
-      zoom: isNavigating ? 17.8 : 14.5,
-      pitch: isNavigating && is3DMode ? 58 : 0,
+      zoom: isNavigating ? 16.8 : 14,
+      pitch: isNavigating && is3DMode ? 32 : 0,
       bearing: isNavigating && is3DMode ? bearingDeg : 0,
-      maxPitch: 70,
+      maxPitch: 55,
       attributionControl: false,
       dragRotate: true,
       touchPitch: true,
     });
 
-    // Detect manual user pan/drag so we don't fight the user's finger
     map.on('dragstart', (e: any) => {
       if (e.originalEvent && onUserDragMap) {
         onUserDragMap();
@@ -210,49 +232,38 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     });
 
     map.on('load', () => {
-      syncRouteLayers(map);
+      drawRouteOnMap();
     });
 
     map.on('styledata', () => {
-      syncRouteLayers(map);
+      drawRouteOnMap();
     });
 
-    // Create Google Maps 3D Navigation Chevron Marker
+    // Create Google Maps iOS Navigation Puck (Large translucent white circle + Blue Navigation Arrow)
     const el = document.createElement('div');
-    el.style.width = '56px';
-    el.style.height = '56px';
+    el.style.width = '64px';
+    el.style.height = '64px';
     el.style.display = 'flex';
     el.style.alignItems = 'center';
     el.style.justifyContent = 'center';
     el.style.pointerEvents = 'none';
 
-    const halo = document.createElement('div');
-    halo.style.position = 'absolute';
-    halo.style.width = '52px';
-    halo.style.height = '52px';
-    halo.style.borderRadius = '9999px';
-    halo.style.background = 'rgba(26, 115, 232, 0.20)';
-    halo.style.border = '1.5px solid rgba(26, 115, 232, 0.45)';
-    el.appendChild(halo);
-
     const puck = document.createElement('div');
-    puck.style.position = 'relative';
-    puck.style.zIndex = '10';
-    puck.style.width = '40px';
-    puck.style.height = '40px';
+    puck.style.width = '54px';
+    puck.style.height = '54px';
     puck.style.borderRadius = '9999px';
-    puck.style.background = '#ffffff';
-    puck.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.35)';
+    puck.style.background = 'rgba(255, 255, 255, 0.92)';
+    puck.style.boxShadow = '0 4px 18px rgba(0, 0, 0, 0.22)';
+    puck.style.border = '1.5px solid rgba(255, 255, 255, 0.95)';
     puck.style.display = 'flex';
     puck.style.alignItems = 'center';
     puck.style.justifyContent = 'center';
     puck.innerHTML = `
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
         <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z" fill="#1A73E8" stroke="#1557B0" stroke-width="1.2" stroke-linejoin="round"/>
       </svg>
     `;
     el.appendChild(puck);
-    vehicleArrowElRef.current = puck;
 
     vehicleMarkerRef.current = new maplibregl.Marker({
       element: el,
@@ -270,27 +281,25 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     };
   }, []);
 
-  // 2. Switch Map Style (3D Vector vs Google Street vs Google Satellite)
+  // 2. Switch Map Style ONLY when user explicitly changes mapStyle
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || prevStyleRef.current === mapStyle) return;
+    prevStyleRef.current = mapStyle;
 
     const nextStyle =
-      mapStyle === 'vector3d'
-        ? VECTOR_3D_STYLE_URL
-        : mapStyle === 'satellite'
-        ? createGoogleRasterStyle('y')
-        : createGoogleRasterStyle('m');
+      mapStyle === 'satellite' ? createGoogleSatelliteStyle() : VECTOR_STYLE_URL;
 
     map.setStyle(nextStyle);
+    map.once('idle', () => drawRouteOnMap());
   }, [mapStyle]);
 
-  // 3. Update Route Polyline & Destination Pin
+  // 3. Update Route Polyline & Destination Pin whenever routeCoordinates changes
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    syncRouteLayers(map);
+    drawRouteOnMap();
 
     if (destination) {
       if (!destMarkerRef.current) {
@@ -303,7 +312,7 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
           <div class="dest-label" style="background: #ffffff; color: #0f172a; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 8px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.25); border: 1.5px solid #ea4335; margin-bottom: 3px;">
             🏁 ${destination.name.slice(0, 24)}
           </div>
-          <div style="width: 28px; height: 28px; border-radius: 9999px; background: #ea4335; border: 3px solid #ffffff; box-shadow: 0 4px 10px rgba(234,67,53,0.5); display: flex; align-items: center; justify-content: center;">
+          <div style="width: 26px; height: 26px; border-radius: 9999px; background: #ea4335; border: 3px solid #ffffff; box-shadow: 0 4px 10px rgba(234,67,53,0.5); display: flex; align-items: center; justify-content: center;">
             <div style="width: 8px; height: 8px; border-radius: 9999px; background: #ffffff;"></div>
           </div>
         `;
@@ -327,59 +336,60 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
       destMarkerRef.current = null;
     }
 
-    // In Overview Mode (Mode 1), fit bounds to show the entire route cleanly
+    // In Overview Mode (Mode 1), fit bounds to show the entire blue route line
     if (!isNavigating && routeCoordinates.length >= 2) {
       const bounds = new maplibregl.LngLatBounds();
       for (const [lat, lon] of routeCoordinates) {
         bounds.extend([lon, lat]);
       }
       map.fitBounds(bounds, {
-        padding: { top: 110, bottom: 220, left: 45, right: 45 },
-        maxZoom: 16,
+        padding: { top: 120, bottom: 230, left: 50, right: 50 },
+        maxZoom: 15.5,
         pitch: 0,
         bearing: 0,
-        duration: 700,
+        duration: 650,
       });
     }
   }, [destination, routeCoordinates, traveledPoints, isNavigating]);
 
-  // 4. Transition between Mode 1 (Overview) and Mode 2 (Google Maps 3D Driving Mode)
+  // 4. Transition between Mode 1 (Overview) and Mode 2 (Google Maps Driving Mode)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
+    drawRouteOnMap();
+
     if (isNavigating && !prevNavigatingRef.current) {
-      // Swoop camera down behind the vehicle just like pressing "Bắt đầu" in Google Maps
+      // Natural Google Maps driving perspective (gentle 32° tilt, upright vector labels, zoom 16.8)
       map.easeTo({
         center: [currentLocation.longitude, currentLocation.latitude],
-        zoom: 17.8,
-        pitch: is3DMode ? 58 : 0,
+        zoom: 16.8,
+        pitch: is3DMode ? 32 : 0,
         bearing: is3DMode ? bearingDeg : 0,
-        offset: is3DMode ? [0, 115] : [0, 0],
-        duration: 1000,
+        offset: [0, 95],
+        duration: 850,
       });
     } else if (!isNavigating && prevNavigatingRef.current) {
-      // Return to overhead route overview
       if (routeCoordinates.length >= 2) {
         const bounds = new maplibregl.LngLatBounds();
         for (const [lat, lon] of routeCoordinates) {
           bounds.extend([lon, lat]);
         }
         map.fitBounds(bounds, {
-          padding: { top: 110, bottom: 220, left: 45, right: 45 },
-          maxZoom: 16,
+          padding: { top: 120, bottom: 230, left: 50, right: 50 },
+          maxZoom: 15.5,
           pitch: 0,
           bearing: 0,
-          duration: 800,
+          duration: 750,
         });
       } else {
         map.easeTo({
           center: [currentLocation.longitude, currentLocation.latitude],
-          zoom: 14.5,
+          zoom: 14,
           pitch: 0,
           bearing: 0,
           offset: [0, 0],
-          duration: 700,
+          duration: 650,
         });
       }
     }
@@ -387,7 +397,7 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     prevNavigatingRef.current = isNavigating;
   }, [isNavigating]);
 
-  // 5. Update Vehicle Position, Heading Rotation & Smooth Camera Tracking
+  // 5. Update Vehicle Position, Heading Rotation & Camera Follow
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -404,11 +414,11 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
       if (isNavigating) {
         map.easeTo({
           center: [currentLocation.longitude, currentLocation.latitude],
-          zoom: map.getZoom() < 16.5 ? 17.8 : map.getZoom(),
-          pitch: is3DMode ? 58 : 0,
+          zoom: map.getZoom() < 15.8 ? 16.8 : map.getZoom(),
+          pitch: is3DMode ? 32 : 0,
           bearing: is3DMode ? bearingDeg : 0,
-          offset: is3DMode ? [0, 115] : [0, 0],
-          duration: 380,
+          offset: [0, 95],
+          duration: 350,
         });
       } else if (!destination) {
         map.easeTo({
@@ -416,7 +426,7 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
           pitch: 0,
           bearing: 0,
           offset: [0, 0],
-          duration: 380,
+          duration: 350,
         });
       }
     }
@@ -430,30 +440,18 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
   ]);
 
   const handleZoomIn = () => {
-    mapRef.current?.zoomIn({ duration: 250 });
+    mapRef.current?.zoomIn({ duration: 220 });
   };
 
   const handleZoomOut = () => {
-    mapRef.current?.zoomOut({ duration: 250 });
+    mapRef.current?.zoomOut({ duration: 220 });
   };
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-[#f1f3f4] select-none">
-      {/* Native WebGL 3D Map Container */}
+    <div className="relative w-full h-full overflow-hidden bg-[#f8f9fa] select-none">
       <div ref={containerRef} className="w-full h-full" />
 
-      {/* Natural Sky Horizon Atmosphere Gradient when in 3D Driving Mode */}
-      {isNavigating && is3DMode && (
-        <div
-          className="pointer-events-none absolute top-0 left-0 right-0 h-28 z-[10]"
-          style={{
-            background:
-              'linear-gradient(180deg, rgba(219, 234, 254, 0.85) 0%, rgba(239, 246, 255, 0.35) 55%, rgba(255, 255, 255, 0) 100%)',
-          }}
-        />
-      )}
-
-      {/* Floating Zoom In / Zoom Out Controls (+ / -) */}
+      {/* Zoom In / Zoom Out Controls (+ / -) */}
       <div
         className={`absolute left-4 z-[400] flex flex-col bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden ${
           isNavigating ? 'top-36' : 'bottom-56'
