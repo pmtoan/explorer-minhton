@@ -108,7 +108,7 @@ export const CafesView: React.FC = () => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Tìm quán cafe có gu, hashtag..."
+            placeholder="Tìm quán cafe, khu vực..."
             className="w-full pl-9 pr-3.5 py-2.5 rounded-2xl bg-white border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs placeholder:text-slate-400"
           />
         </div>
@@ -118,11 +118,11 @@ export const CafesView: React.FC = () => {
           className="px-3.5 py-2.5 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm whitespace-nowrap transition-transform active:scale-95"
         >
           <Plus className="w-4 h-4" />
-          <span>+ Quán Ruột</span>
+          <span>+ Thêm quán</span>
         </button>
       </div>
 
-      {/* 2-TAB SOURCE SELECTOR: "Từ Google Maps" vs "Từ Cộng Đồng Review" */}
+      {/* 2-TAB SOURCE SELECTOR: "Google Maps" vs "Cộng đồng" */}
       <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-200/80 rounded-2xl">
         <button
           onClick={() => setSourceTab('google_maps')}
@@ -132,7 +132,7 @@ export const CafesView: React.FC = () => {
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <span>🗺️ Từ Google Maps</span>
+          <span>Google Maps</span>
           <span
             className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
               sourceTab === 'google_maps'
@@ -152,7 +152,7 @@ export const CafesView: React.FC = () => {
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <span>👥 Cộng Đồng Review</span>
+          <span>Cộng đồng</span>
           <span
             className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
               sourceTab === 'community'
@@ -177,7 +177,7 @@ export const CafesView: React.FC = () => {
           <div className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 flex items-center justify-center text-xl mx-auto">
             ☕
           </div>
-          <div className="font-bold text-sm text-slate-700">Không tìm thấy quán cafe phù hợp</div>
+          <div className="font-bold text-sm text-slate-700">Không tìm thấy quán</div>
           <p className="text-xs text-slate-400 max-w-xs mx-auto">
             Thử tìm kiếm với từ khóa khác hoặc nhấn vào nút bên dưới để xem lại tất cả các quán.
           </p>
@@ -188,7 +188,7 @@ export const CafesView: React.FC = () => {
             }}
             className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 font-bold text-xs hover:bg-emerald-100 transition-colors"
           >
-            Đặt lại bộ lọc
+            Xóa bộ lọc
           </button>
         </div>
       ) : (

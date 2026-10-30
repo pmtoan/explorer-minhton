@@ -73,12 +73,12 @@ export const LiveTripModal: React.FC<LiveTripModalProps> = ({
               }`}
             ></span>
             {isPaused
-              ? 'GPS Đã tạm dừng'
+              ? 'GPS tạm dừng'
               : activeTrip.gpsStatus === 'locked'
-              ? `GPS Đã khóa (${activeTrip.accuracyMeters ? `±${activeTrip.accuracyMeters}m` : 'chuẩn'})`
+              ? `GPS sẵn sàng (${activeTrip.accuracyMeters ? `±${activeTrip.accuracyMeters}m` : 'chuẩn'})`
               : activeTrip.gpsStatus === 'permission_denied'
-              ? 'Chưa cấp quyền GPS'
-              : 'GPS đang kết nối...'}
+              ? 'Chưa cấp quyền'
+              : 'Đang tìm GPS...'}
           </span>
         </div>
 
@@ -109,7 +109,7 @@ export const LiveTripModal: React.FC<LiveTripModalProps> = ({
               }`}
             >
               <Gauge className="w-4 h-4 text-emerald-600" />
-              <span>Dẫn Đường & Tốc Độ</span>
+              <span>Dẫn đường</span>
             </button>
             <button
               onClick={() => setTab('checkpoints')}
@@ -120,7 +120,7 @@ export const LiveTripModal: React.FC<LiveTripModalProps> = ({
               }`}
             >
               <MapIcon className="w-4 h-4 text-emerald-600" />
-              <span>Sơ Đồ & Mốc ({activeTrip.route.checkpoints.length})</span>
+              <span>Lộ trình ({activeTrip.route.checkpoints.length})</span>
             </button>
           </div>
         </div>
@@ -135,7 +135,7 @@ export const LiveTripModal: React.FC<LiveTripModalProps> = ({
               <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-xs text-slate-400 font-semibold block">Hành trình đang đi</span>
+                    <span className="text-xs text-slate-400 font-semibold block">Chuyến đi hiện tại</span>
                     <h2 className="text-base font-extrabold text-slate-800 mt-0.5">{activeTrip.title}</h2>
                   </div>
                   <div className="text-right">
@@ -149,7 +149,7 @@ export const LiveTripModal: React.FC<LiveTripModalProps> = ({
                 {/* Live GPS Route Visualizer */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs font-bold text-slate-600 px-1">
-                    <span>🗺️ Sơ đồ GPS thực tế</span>
+                    <span>🗺️ Bản đồ lộ trình</span>
                     <span className="text-emerald-600">{activeTrip.distanceKm.toFixed(2)} km</span>
                   </div>
                   <SvgRouteMap route={activeTrip.route} height={145} />
@@ -160,7 +160,7 @@ export const LiveTripModal: React.FC<LiveTripModalProps> = ({
               <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Các mốc hành chính ({activeTrip.route.checkpoints.length})
+                    Điểm mốc ({activeTrip.route.checkpoints.length})
                   </h3>
                   <button
                     onClick={handleManualCheckIn}
@@ -168,13 +168,13 @@ export const LiveTripModal: React.FC<LiveTripModalProps> = ({
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-bold transition-all disabled:opacity-50"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>{isCheckingIn ? 'Đang định vị...' : '+ Check-in mốc'}</span>
+                    <span>{isCheckingIn ? 'Đang định vị...' : '+ Thêm mốc'}</span>
                   </button>
                 </div>
 
                 {activeTrip.route.checkpoints.length === 0 ? (
                   <div className="p-3 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl">
-                    Đang chờ tín hiệu GPS để ghi nhận mốc hành chính đầu tiên...
+                    Đang chờ GPS ghi nhận điểm mốc đầu tiên...
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -227,12 +227,12 @@ export const LiveTripModal: React.FC<LiveTripModalProps> = ({
               {isPaused ? (
                 <>
                   <Play className="w-4 h-4 fill-white text-white" />
-                  <span>Tiếp tục đi (Bật GPS)</span>
+                  <span>Tiếp tục</span>
                 </>
               ) : (
                 <>
                   <Pause className="w-4 h-4 fill-slate-700 text-slate-700" />
-                  <span>Tạm dừng (Tiết kiệm pin)</span>
+                  <span>Tạm dừng</span>
                 </>
               )}
             </button>
@@ -242,7 +242,7 @@ export const LiveTripModal: React.FC<LiveTripModalProps> = ({
               className="py-3 px-3 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-transform active:scale-95"
             >
               <Flag className="w-4 h-4" />
-              <span>Kết Thúc & Lưu</span>
+              <span>Kết thúc</span>
             </button>
           </div>
 
@@ -251,7 +251,7 @@ export const LiveTripModal: React.FC<LiveTripModalProps> = ({
             className="w-full py-2 text-center text-xs text-rose-500 hover:text-rose-700 font-semibold flex items-center justify-center gap-1 transition-colors"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span>Hủy bỏ chuyến đi này</span>
+            <span>Hủy chuyến đi</span>
           </button>
         </div>
       </div>

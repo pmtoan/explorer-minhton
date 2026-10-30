@@ -34,8 +34,8 @@ export const SettingsView: React.FC = () => {
             <HardDrive className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-extrabold text-sm text-slate-800">Bộ nhớ Local-First</h3>
-            <p className="text-[11px] text-slate-400">Hoạt động độc lập 100% không cần Internet</p>
+            <h3 className="font-extrabold text-sm text-slate-800">Dữ liệu thiết bị</h3>
+            <p className="text-[11px] text-slate-400">Lưu trữ an toàn ngoại tuyến</p>
           </div>
         </div>
 
@@ -56,7 +56,7 @@ export const SettingsView: React.FC = () => {
 
         <div className="flex items-center gap-2 p-2.5 rounded-2xl bg-emerald-50 text-emerald-800 text-xs font-semibold border border-emerald-100">
           <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-          <span>Dữ liệu an toàn trên thiết bị của bạn. Không qua máy chủ bên thứ ba.</span>
+          <span>Dữ liệu lưu trữ riêng tư trên máy của bạn.</span>
         </div>
       </div>
 
@@ -67,29 +67,28 @@ export const SettingsView: React.FC = () => {
             <Smartphone className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-extrabold text-sm text-slate-800">Trải Nghiệm Android & PWA</h3>
-            <p className="text-[11px] text-slate-400">Cài đặt full màn hình không viền trình duyệt</p>
+            <h3 className="font-extrabold text-sm text-slate-800">Cài đặt ứng dụng</h3>
+            <p className="text-[11px] text-slate-400">Trải nghiệm toàn màn hình như app gốc</p>
           </div>
         </div>
 
         <div className="space-y-2 text-xs text-slate-600 leading-relaxed">
           <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
-            <div className="font-bold text-slate-800">📱 Cài đặt Web App (PWA):</div>
+            <div className="font-bold text-slate-800">📱 Thêm vào Màn hình chính (PWA):</div>
             <p className="text-[11px] text-slate-500">
-              Mở Safari hoặc Chrome trên điện thoại ➔ Chọn <b>Chia sẻ</b> ➔ Chọn{' '}
-              <b>"Thêm vào Màn hình chính" (Add to Home Screen)</b>. Ứng dụng sẽ chạy toàn màn hình
-              như một ứng dụng độc lập!
+              Mở trình duyệt Safari/Chrome ➔ Bấm <b>Chia sẻ</b> ➔ Chọn{' '}
+              <b>"Thêm vào Màn hình chính" (Add to Home Screen)</b>.
             </p>
           </div>
 
           <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
-            <div className="font-bold text-slate-800">🤖 Android Native App (Capacitor):</div>
+            <div className="font-bold text-slate-800">🤖 Ứng dụng Android (APK):</div>
             <p className="text-[11px] text-slate-500">
-              Đã cấu hình sẵn mã nguồn Android trong thư mục dự án với Package ID{' '}
+              Mã nguồn Android đã sẵn sàng với Package ID{' '}
               <code className="text-[10px] bg-slate-200 px-1 py-0.5 rounded text-slate-800">
                 com.minhton.motoexplorer
               </code>
-              . Bạn có thể mở Android Studio và build APK trực tiếp bất cứ lúc nào!
+              . Bạn có thể yêu cầu đóng gói APK bất cứ lúc nào.
             </p>
           </div>
         </div>
@@ -97,7 +96,7 @@ export const SettingsView: React.FC = () => {
         <div className="pt-1 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-50">
           <span className="flex items-center gap-1">
             <Info className="w-3.5 h-3.5" />
-            <span>Phiên bản v1.0.3 (Build 2026.10.29)</span>
+            <span>Phiên bản v1.1.0</span>
           </span>
           <span className="font-bold text-emerald-600">Tác giả: Minton</span>
         </div>

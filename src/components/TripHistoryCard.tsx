@@ -23,7 +23,7 @@ export const TripHistoryCard: React.FC<TripHistoryCardProps> = ({ trip, onDelete
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 text-[11px] font-semibold mb-1">
-            <span>🕒 Khởi hành: {trip.startTime} • {trip.displayDate}</span>
+            <span>{trip.startTime} • {trip.displayDate}</span>
           </div>
           <h3 className="font-extrabold text-sm text-slate-800 leading-snug">{trip.title}</h3>
         </div>
@@ -47,11 +47,11 @@ export const TripHistoryCard: React.FC<TripHistoryCardProps> = ({ trip, onDelete
         target="_blank"
         rel="noopener noreferrer"
         className="block relative rounded-2xl overflow-hidden border border-emerald-100 group cursor-pointer"
-        title="Bấm để mở chỉ đường nhiều chặng trên Google Maps"
+        title="Mở lộ trình trên Google Maps"
       >
         <SvgRouteMap route={trip.route} height={130} />
         <div className="absolute top-2.5 right-2.5 bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-xl text-[11px] font-bold text-blue-600 shadow-sm border border-blue-100 flex items-center gap-1 group-hover:bg-blue-600 group-hover:text-white transition-all">
-          <span>🗺️ Google Maps</span>
+          <span>Google Maps</span>
           <ExternalLink className="w-3 h-3" />
         </div>
       </a>
@@ -87,7 +87,7 @@ export const TripHistoryCard: React.FC<TripHistoryCardProps> = ({ trip, onDelete
             onClick={() => setShowNotes(!showNotes)}
             className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 flex items-center gap-1"
           >
-            <span>{showNotes ? 'Thu gọn ghi chú' : 'Xem ghi chú cảm xúc'}</span>
+            <span>{showNotes ? 'Thu gọn' : 'Xem ghi chú'}</span>
             {showNotes ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           </button>
           {showNotes && (

@@ -43,20 +43,20 @@ export const TripsView: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* STATE A: NO TRIP ACTIVE -> HERO "BẮT ĐẦU ĐI" CTA */}
+      {/* STATE A: NO TRIP ACTIVE -> HERO "BẮT ĐẦU" CTA */}
       {!activeTrip && (
         <div className="bg-white p-5 rounded-3xl border border-emerald-100 shadow-sm space-y-3.5 transition-all">
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 mb-0.5">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Quy trình phượt thực tế v4.0</span>
+                <span>Ghi lộ trình GPS</span>
               </div>
               <h2 className="font-extrabold text-base text-slate-800">
-                Sẵn sàng cho chuyến phượt mới?
+                Bắt đầu chuyến đi mới
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Bấm bắt đầu khi xe chuẩn bị lăn bánh để tự động ghi GPS
+                Tự động đo tốc độ, số km và vẽ bản đồ trực tiếp
               </p>
             </div>
 
@@ -70,7 +70,7 @@ export const TripsView: React.FC = () => {
             className="w-full py-3.5 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-sm flex items-center justify-center gap-2.5 shadow-md shadow-emerald-500/25 transition-all active:scale-95"
           >
             <Compass className="w-5 h-5 animate-spin-slow" />
-            <span>Bắt Đầu Đi (Tạo Trip & Ghi GPS)</span>
+            <span>Bắt đầu chuyến đi</span>
           </button>
         </div>
       )}
@@ -87,16 +87,16 @@ export const TripsView: React.FC = () => {
       <div className="space-y-3 pt-1">
         <div className="flex items-center justify-between px-1">
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Lịch sử các chuyến đi đã hoàn thành ({trips.length})
+            Chuyến đi gần đây ({trips.length})
           </h2>
         </div>
 
         {trips.length === 0 ? (
           <div className="bg-white rounded-3xl p-8 text-center space-y-2 border border-slate-100">
             <span className="text-3xl block">🛣️</span>
-            <div className="font-bold text-sm text-slate-700">Chưa có chuyến đi nào được lưu</div>
+            <div className="font-bold text-sm text-slate-700">Chưa có chuyến đi nào</div>
             <p className="text-xs text-slate-400 max-w-xs mx-auto">
-              Nhấn nút <b>"Bắt Đầu Đi"</b> ở trên để bắt đầu ghi lại cung đường đầu tiên của bạn!
+              Bấm <b>"Bắt đầu chuyến đi"</b> để ghi lại lộ trình đầu tiên của bạn!
             </p>
           </div>
         ) : (

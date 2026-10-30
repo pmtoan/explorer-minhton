@@ -37,19 +37,17 @@ export const CafeCard: React.FC<CafeCardProps> = ({
               </span>
               {cafe.source === 'google_maps' && (
                 <span className="px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200/80 font-bold text-[10px] flex items-center gap-1">
-                  <span>🗺️</span>
-                  <span>{cafe.sourceInfo?.badgeText || 'Từ Google Maps'}</span>
+                  <span>Google Maps</span>
                 </span>
               )}
               {cafe.source === 'community' && (
                 <span className="px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200/80 font-bold text-[10px] flex items-center gap-1">
-                  <span>👥</span>
-                  <span>{cafe.sourceInfo?.badgeText || 'Cộng đồng Review'}</span>
+                  <span>Cộng đồng</span>
                 </span>
               )}
               {cafe.isCustom && (
                 <span className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-600 border border-orange-200 font-bold text-[10px]">
-                  Quán Ruột của tôi
+                  Quán ruột
                 </span>
               )}
             </div>
@@ -97,7 +95,7 @@ export const CafeCard: React.FC<CafeCardProps> = ({
           <div className="flex items-start gap-1.5 p-2 rounded-xl bg-slate-50 text-slate-600 text-[11px] border border-slate-100">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 mt-0.5" />
             <span className="leading-snug">
-              <b>Bãi xe máy:</b> {cafe.parkingInfo}
+              <b>Gửi xe:</b> {cafe.parkingInfo}
             </span>
           </div>
         )}

@@ -49,12 +49,12 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
           {isPaused ? (
             <>
               <span className="text-amber-200">⏸️</span>
-              <span>ĐÃ TẠM DỪNG (TẮT GPS CHỐNG NÓNG)</span>
+              <span className="tracking-wide uppercase">Tạm dừng</span>
             </>
           ) : (
             <>
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-300 animate-ping"></span>
-              <span className="tracking-wide">ĐANG GHI HÀNH TRÌNH THỰC TẾ</span>
+              <span className="tracking-wide uppercase">Đang ghi trực tiếp</span>
             </>
           )}
         </span>
@@ -68,7 +68,7 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
         <div className="bg-rose-600 text-white p-2.5 rounded-2xl mb-2.5 text-xs font-bold flex items-center justify-between shadow-md">
           <div className="flex items-center gap-1.5">
             <span>⚠️</span>
-            <span>Chưa cấp quyền GPS vị trí!</span>
+            <span>Chưa cấp quyền vị trí!</span>
           </div>
           <button
             onClick={async (e) => {
@@ -77,7 +77,7 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
             }}
             className="px-2.5 py-1 bg-white text-rose-700 rounded-xl text-[11px] font-black hover:bg-rose-50 transition-colors shadow-xs"
           >
-            Cấp quyền ngay
+            Cấp quyền
           </button>
         </div>
       )}
@@ -86,7 +86,7 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
         <div className="bg-amber-600 text-white p-2.5 rounded-2xl mb-2.5 text-xs font-bold flex items-center justify-between shadow-md">
           <div className="flex items-center gap-1.5 flex-1 pr-2">
             <span>⚠️</span>
-            <span>{activeTrip.gpsErrorMessage || 'GPS chưa có tín hiệu. Hãy bật Vị trí trên máy.'}</span>
+            <span>{activeTrip.gpsErrorMessage || 'Chưa nhận được tín hiệu GPS.'}</span>
           </div>
           <button
             onClick={async (e) => {
@@ -105,21 +105,21 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
         <div className="flex items-center gap-2 mb-2 text-[11px] font-medium text-amber-100">
           <span className="inline-flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-lg text-white">
             <span>⏸️</span>
-            <span>GPS đang tạm ngắt (Chống nóng máy & tiết kiệm pin)</span>
+            <span>GPS tạm dừng</span>
           </span>
         </div>
       ) : activeTrip.gpsStatus === 'locked' ? (
         <div className="flex items-center gap-2 mb-2 text-[11px] font-medium text-emerald-100">
           <span className="inline-flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-lg text-white">
             <span className="w-2 h-2 rounded-full bg-emerald-300"></span>
-            <span>GPS đã khóa tọa độ {activeTrip.accuracyMeters ? `(±${activeTrip.accuracyMeters}m)` : ''}</span>
+            <span>GPS sẵn sàng {activeTrip.accuracyMeters ? `(±${activeTrip.accuracyMeters}m)` : ''}</span>
           </span>
         </div>
       ) : activeTrip.gpsStatus === 'searching' ? (
         <div className="flex items-center gap-2 mb-2 text-[11px] font-medium text-emerald-100">
           <span className="inline-flex items-center gap-1 bg-amber-500/30 px-2 py-0.5 rounded-lg text-amber-100">
             <span className="w-2 h-2 rounded-full bg-amber-300 animate-ping"></span>
-            <span>Đang kết nối vệ tinh GPS ngoài trời...</span>
+            <span>Đang tìm GPS...</span>
           </span>
         </div>
       ) : null}
@@ -128,10 +128,10 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
       <div className="bg-white/10 hover:bg-white/15 p-3.5 rounded-2xl transition-all border border-white/20 mb-3">
         <div className="flex items-center justify-between text-xs font-medium text-white/90">
           <span className="flex items-center gap-1 font-bold">
-            <span>Quãng đường (Đo thời gian thực):</span>
+            <span>Quãng đường</span>
           </span>
           <span className="inline-flex items-center gap-1 text-xs font-bold bg-white/20 px-2.5 py-0.5 rounded-lg text-white">
-            Xem chi tiết & Maps <ChevronRight className="w-3.5 h-3.5" />
+            Bản đồ & Dẫn đường <ChevronRight className="w-3.5 h-3.5" />
           </span>
         </div>
 
@@ -155,18 +155,18 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
           <div className="flex items-center gap-1.5 truncate">
             <Navigation className="w-3.5 h-3.5 flex-shrink-0 text-emerald-200" />
             <span className="truncate">
-              Đã qua <b>{checkpointCount}</b> mốc • <b>{lastCpName}</b>
+              <b>{checkpointCount}</b> mốc • <b>{lastCpName}</b>
             </span>
           </div>
           {activeTrip.destination && (
             <span className="text-[10px] bg-rose-500/80 text-white font-bold px-2 py-0.5 rounded-lg flex-shrink-0 truncate max-w-[120px]">
-              Đến: {activeTrip.destination.name}
+              Đích: {activeTrip.destination.name}
             </span>
           )}
         </div>
       </div>
 
-      {/* Battery-Saving Action Buttons */}
+      {/* Action Buttons */}
       <div className="flex items-center gap-2">
         <button
           onClick={handleTogglePause}
@@ -179,12 +179,12 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
           {isPaused ? (
             <>
               <Play className="w-4 h-4 fill-orange-600 text-orange-600" />
-              <span>Tiếp tục di chuyển (Bật lại GPS)</span>
+              <span>Tiếp tục</span>
             </>
           ) : (
             <>
               <Pause className="w-4 h-4 fill-emerald-700 text-emerald-700" />
-              <span>Tạm dừng (Nghỉ chân / Tiết kiệm pin)</span>
+              <span>Tạm dừng</span>
             </>
           )}
         </button>

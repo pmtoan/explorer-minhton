@@ -68,8 +68,8 @@ export const FinishTripModal: React.FC<FinishTripModalProps> = ({
               🏁
             </span>
             <div>
-              <h2 className="text-sm font-bold text-slate-800">Kết Thúc & Lưu Nhật Ký</h2>
-              <p className="text-[11px] text-slate-400">Chốt km thực tế và lưu vào lịch sử</p>
+              <h2 className="text-sm font-bold text-slate-800">Lưu chuyến đi</h2>
+              <p className="text-[11px] text-slate-400">Tổng kết quãng đường và chi phí</p>
             </div>
           </div>
           <button
@@ -91,11 +91,11 @@ export const FinishTripModal: React.FC<FinishTripModalProps> = ({
           {/* Odometer Summary Badge */}
           <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl p-3.5 text-white flex items-center justify-between shadow-sm">
             <div>
-              <span className="text-xs text-emerald-100 block font-medium">Tổng quãng đường GPS:</span>
-              <div className="text-2xl font-black">{activeTrip.distanceKm.toFixed(1)} km</div>
+              <span className="text-xs text-emerald-100 block font-medium">Quãng đường</span>
+              <div className="text-2xl font-black">{activeTrip.distanceKm.toFixed(2)} km</div>
             </div>
             <div className="text-right">
-              <span className="text-xs text-emerald-100 block font-medium">Số mốc check-in:</span>
+              <span className="text-xs text-emerald-100 block font-medium">Điểm mốc</span>
               <div className="text-xl font-bold">{activeTrip.route.checkpoints.length} mốc</div>
             </div>
           </div>
@@ -103,13 +103,13 @@ export const FinishTripModal: React.FC<FinishTripModalProps> = ({
           {/* Title Input */}
           <div>
             <label className="text-xs font-bold text-slate-700 block mb-1">
-              Tên chuyến đi phượt
+              Tên chuyến đi
             </label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ví dụ: Phượt Sài Gòn - Vũng Tàu cuối tuần"
+              placeholder="Ví dụ: Sài Gòn - Vũng Tàu"
               className="w-full px-3.5 py-2.5 rounded-2xl bg-white border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               required
             />
@@ -120,7 +120,7 @@ export const FinishTripModal: React.FC<FinishTripModalProps> = ({
             <div>
               <label className="text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
                 <Fuel className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Xăng tiêu hao (Lít)</span>
+                <span>Xăng (lít)</span>
               </label>
               <input
                 type="number"
@@ -137,7 +137,7 @@ export const FinishTripModal: React.FC<FinishTripModalProps> = ({
             <div>
               <label className="text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
                 <CircleDollarSign className="w-3.5 h-3.5 text-orange-500" />
-                <span>Tổng chi phí (VNĐ)</span>
+                <span>Chi phí (đ)</span>
               </label>
               <input
                 type="number"
@@ -158,7 +158,7 @@ export const FinishTripModal: React.FC<FinishTripModalProps> = ({
           {/* Bike Comfort Rating */}
           <div>
             <label className="text-xs font-bold text-slate-700 block mb-1">
-              Độ êm xe & Cung đường:
+              Đánh giá cung đường
             </label>
             <div className="flex items-center gap-2 bg-white p-2.5 rounded-2xl border border-slate-200">
               {[1, 2, 3, 4, 5].map((star) => (
@@ -178,7 +178,7 @@ export const FinishTripModal: React.FC<FinishTripModalProps> = ({
                 </button>
               ))}
               <span className="text-xs font-bold text-amber-600 ml-auto">
-                {bikeRating === 5 ? 'Quá mượt êm' : `${bikeRating} / 5`}
+                {bikeRating === 5 ? 'Tuyệt vời (5/5)' : `${bikeRating} / 5`}
               </span>
             </div>
           </div>
@@ -186,13 +186,13 @@ export const FinishTripModal: React.FC<FinishTripModalProps> = ({
           {/* Notes */}
           <div>
             <label className="text-xs font-bold text-slate-700 block mb-1">
-              Ghi chú cảm xúc & Kinh nghiệm chạy xe:
+              Ghi chú
             </label>
             <textarea
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Đường vắng, gió biển mát rượi, ăn bánh khọt siêu ngon..."
+              placeholder="Đường thoáng, cảnh đẹp, điểm nghỉ chân êm..."
               className="w-full px-3 py-2 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
@@ -204,14 +204,14 @@ export const FinishTripModal: React.FC<FinishTripModalProps> = ({
               onClick={onClose}
               className="flex-1 py-3 px-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs transition-colors"
             >
-              Quay lại
+              Hủy
             </button>
             <button
               type="submit"
               className="flex-1 py-3 px-3 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-transform active:scale-95"
             >
               <Check className="w-4 h-4" />
-              <span>Lưu Vào Lịch Sử</span>
+              <span>Lưu chuyến đi</span>
             </button>
           </div>
         </form>

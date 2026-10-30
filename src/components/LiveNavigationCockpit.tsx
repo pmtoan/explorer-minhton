@@ -91,7 +91,7 @@ export const LiveNavigationCockpit: React.FC<LiveNavigationCockpitProps> = ({
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
             <span className="text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1">
               <Zap className="w-3.5 h-3.5" />
-              <span>Cockpit Dẫn Đường Thông Minh</span>
+              <span>Dẫn đường & Tốc độ</span>
             </span>
           </div>
 
@@ -129,7 +129,7 @@ export const LiveNavigationCockpit: React.FC<LiveNavigationCockpitProps> = ({
             <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 mb-1">
               <span className="flex items-center gap-1">
                 <Gauge className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Tốc Độ Hiện Tại</span>
+                <span>Tốc độ</span>
               </span>
               <span className="text-[10px] text-slate-500">
                 Max: {telemetry.maxSpeedKmh.toFixed(0)}
@@ -143,7 +143,7 @@ export const LiveNavigationCockpit: React.FC<LiveNavigationCockpitProps> = ({
             </div>
             <div className="text-[10px] text-slate-400 mt-1 flex items-center justify-between">
               <span>TB: {telemetry.averageSpeedKmh.toFixed(1)} km/h</span>
-              <span className="text-emerald-400 font-semibold text-[9px]">Lọc Kalman 2D</span>
+              <span className="text-emerald-400/80 font-medium text-[9px]">GPS mượt</span>
             </div>
           </div>
 
@@ -152,7 +152,7 @@ export const LiveNavigationCockpit: React.FC<LiveNavigationCockpitProps> = ({
             <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 mb-1">
               <span className="flex items-center gap-1">
                 <Compass className="w-3.5 h-3.5 text-blue-400" />
-                <span>Quãng Đường Đã Đi</span>
+                <span>Quãng đường</span>
               </span>
             </div>
             <div className="flex items-baseline gap-1.5">
@@ -163,13 +163,13 @@ export const LiveNavigationCockpit: React.FC<LiveNavigationCockpitProps> = ({
             </div>
             <div className="text-[10px] text-slate-400 mt-1 flex items-center justify-between">
               <span>
-                Chạy:{' '}
+                Thời gian:{' '}
                 <b>
-                  {movingMinutes}m {movingSeconds}s
+                  {movingMinutes}p {movingSeconds}s
                 </b>
               </span>
               <span>
-                Mốc: <b>{activeTrip.route.checkpoints.length}</b>
+                <b>{activeTrip.route.checkpoints.length}</b> mốc
               </span>
             </div>
           </div>
@@ -181,7 +181,7 @@ export const LiveNavigationCockpit: React.FC<LiveNavigationCockpitProps> = ({
         <div className="flex-1 min-w-0">
           <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
             <MapPin className="w-3 h-3 text-rose-400" />
-            <span>Điểm Đến Dẫn Đường:</span>
+            <span>Điểm đến:</span>
           </div>
           <div className="text-xs font-extrabold text-white truncate mt-0.5">
             {activeTrip.destination ? activeTrip.destination.name : 'Chưa chọn điểm đến'}
@@ -203,7 +203,7 @@ export const LiveNavigationCockpit: React.FC<LiveNavigationCockpitProps> = ({
             onClick={() => setShowDestinationPicker(!showDestinationPicker)}
             className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs flex items-center gap-1 shadow-sm transition-transform active:scale-95"
           >
-            <span>{activeTrip.destination ? 'Đổi đích đến' : '+ Chọn đích đến'}</span>
+            <span>{activeTrip.destination ? 'Đổi điểm đến' : '+ Chọn điểm đến'}</span>
             {showDestinationPicker ? (
               <ChevronUp className="w-3.5 h-3.5" />
             ) : (
@@ -222,7 +222,7 @@ export const LiveNavigationCockpit: React.FC<LiveNavigationCockpitProps> = ({
               type="text"
               value={customDestinationInput}
               onChange={(e) => setCustomDestinationInput(e.target.value)}
-              placeholder="Nhập địa chỉ, bãi biển, quán cafe..."
+              placeholder="Tìm địa chỉ, địa danh, quán cafe..."
               className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
             <button
@@ -236,7 +236,7 @@ export const LiveNavigationCockpit: React.FC<LiveNavigationCockpitProps> = ({
           {/* Quick Cafe Suggestions */}
           <div className="space-y-1">
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              Gợi ý quán cafe phượt & quán ruột:
+              Gợi ý quán cafe & quán ruột:
             </div>
             <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
               {allCafes.slice(0, 8).map((cafe) => (
@@ -278,7 +278,7 @@ export const LiveNavigationCockpit: React.FC<LiveNavigationCockpitProps> = ({
             className="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-lg backdrop-blur-md transition-transform active:scale-95"
           >
             <Navigation className="w-3.5 h-3.5" />
-            <span>Mở chỉ đường Google Maps</span>
+            <span>Mở Google Maps</span>
             <ExternalLink className="w-3 h-3 ml-0.5 opacity-80" />
           </a>
         </div>

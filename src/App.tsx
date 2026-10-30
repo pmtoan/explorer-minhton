@@ -96,7 +96,7 @@ export const App: React.FC = () => {
               <span className="text-[11px]">Quán Cafe</span>
             </button>
 
-            {/* Tab 3: Google Drive */}
+            {/* Tab 3: Cài Đặt */}
             <button
               onClick={() => setActiveTab('settings')}
               className={`flex flex-col items-center gap-1 px-4 py-1.5 rounded-2xl transition-all duration-200 ${
@@ -106,7 +106,7 @@ export const App: React.FC = () => {
               }`}
             >
               <Cloud className={`w-5 h-5 ${activeTab === 'settings' ? 'stroke-[2.5]' : ''}`} />
-              <span className="text-[11px]">Google Drive</span>
+              <span className="text-[11px]">Cài Đặt</span>
             </button>
           </div>
         </nav>
