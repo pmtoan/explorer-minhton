@@ -29,6 +29,7 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
   routeCoordinates = [],
   traveledPoints = [],
   bearingDeg = 0,
+  is3DMode = true,
   isFollowing = true,
   isNavigating = false,
   mapStyle = 'vector3d',
@@ -44,14 +45,29 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
   const prevNavigatingRef = useRef<boolean>(false);
   const lastFittedDestKeyRef = useRef<string>('');
 
-  // Keep latest callbacks in refs so Leaflet event listeners never go stale
   const onUserDragRef = useRef(onUserDragMap);
   onUserDragRef.current = onUserDragMap;
 
   const onMapClickRef = useRef(onMapClickSelect);
   onMapClickRef.current = onMapClickSelect;
 
-  // 1. Initialize Leaflet Map once (Pure native 2D/vector-rendered Google Maps tiles, zero CSS distortion)
+  // Helper: Compute camera target center so vehicle sits in the lower-third of the screen in Driving Mode
+  const getDrivingCameraCenter = (
+    map: L.Map,
+    lat: number,
+    lon: number,
+    targetZoom: number
+  ): L.LatLng => {
+    const size = map.getSize();
+    const offsetY = size.y > 0 ? size.y * 0.18 : 110;
+    const projected = map.project([lat, lon], targetZoom);
+    // Subtract Y in pixel space so the map center is ahead (north) of the vehicle,
+    // placing the vehicle puck in the lower-third of the screen!
+    const shifted = L.point(projected.x, projected.y - offsetY);
+    return map.unproject(shifted, targetZoom);
+  };
+
+  // 1. Initialize Leaflet Map once
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
@@ -60,8 +76,7 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
       zoom: isNavigating ? 18 : 14,
       zoomControl: false,
       attributionControl: false,
-      // Use SVG renderer with generous padding so polylines never clip while panning
-      renderer: L.svg({ padding: 1.0 }),
+      renderer: L.svg({ padding: 1.5 }),
     });
 
     const tileUrl =
@@ -101,7 +116,7 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     };
   }, []);
 
-  // 2. Switch between Google Maps Standard Street ('m') and Google Hybrid Satellite ('y')
+  // 2. Switch between Google Maps Street ('m') and Google Hybrid Satellite ('y')
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -129,7 +144,6 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
 
     routeGroup.clearLayers();
 
-    // Determine active route points (use OSRM route if ready, or direct line if destination is selected)
     const activeCoords: [number, number][] =
       routeCoordinates && routeCoordinates.length >= 2
         ? routeCoordinates
@@ -141,32 +155,32 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
         : [];
 
     if (activeCoords.length >= 2) {
-      // Layer 1: Outer Dark Navy Border Casing (#1e1b4b)
+      // Outer Dark Navy Border Casing (#1e1b4b)
       L.polyline(activeCoords, {
         color: '#1e1b4b',
-        weight: 12,
-        opacity: 0.9,
+        weight: isNavigating ? 16 : 11,
+        opacity: 0.92,
         lineCap: 'round',
         lineJoin: 'round',
         interactive: false,
       }).addTo(routeGroup);
 
-      // Layer 2: Inner Google Maps Vibrant Electric Blue (#2962ff)
+      // Inner Google Maps Vibrant Electric Blue (#3742fa)
       L.polyline(activeCoords, {
-        color: '#2962ff',
-        weight: 8,
+        color: '#3742fa',
+        weight: isNavigating ? 11 : 7,
         opacity: 1,
         lineCap: 'round',
         lineJoin: 'round',
         interactive: false,
       }).addTo(routeGroup);
 
-      // Layer 3: Inner Direction Flow Highlight
+      // Direction Flow Arrows Highlight
       L.polyline(activeCoords, {
         color: '#93c5fd',
-        weight: 2.5,
+        weight: isNavigating ? 3.5 : 2,
         opacity: 0.85,
-        dashArray: '6, 12',
+        dashArray: '6, 14',
         lineCap: 'round',
         interactive: false,
       }).addTo(routeGroup);
@@ -230,15 +244,19 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
         destinationMarkerRef.current.setIcon(destIcon);
       }
 
-      // In Mode 1 (Overview Mode), automatically frame the full route when a new destination/route loads
+      // ONLY fitBounds when in Mode 1 (Overview Mode, isNavigating === false)
       const destKey = `${destination.latitude.toFixed(4)},${destination.longitude.toFixed(4)}-${activeCoords.length}`;
-      if (!isNavigating && activeCoords.length >= 2 && lastFittedDestKeyRef.current !== destKey) {
+      if (
+        !isNavigating &&
+        activeCoords.length >= 2 &&
+        lastFittedDestKeyRef.current !== destKey
+      ) {
         lastFittedDestKeyRef.current = destKey;
         const bounds = L.latLngBounds(activeCoords);
         map.fitBounds(bounds, {
           paddingTopLeft: [35, 130],
           paddingBottomRight: [35, 220],
-          maxZoom: 16,
+          maxZoom: 15,
           animate: true,
         });
       }
@@ -249,55 +267,20 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     }
   }, [destination, routeCoordinates, traveledPoints, isNavigating]);
 
-  // 4. Transition between Mode 1 (Overview) and Mode 2 (Google Maps Driving Mode)
+  // 4. Unified Camera Controller: Mode 1 (Overview) vs Mode 2 (Close-up Street Driving View)
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    map.invalidateSize();
+    // Update Google Maps Blue Navigation Arrow Puck
+    const puckSize = isNavigating ? 68 : 54;
+    const innerSize = isNavigating ? 56 : 44;
+    const svgSize = isNavigating ? 34 : 26;
 
-    if (isNavigating && !prevNavigatingRef.current) {
-      // Smoothly zoom in to street-level driving view (zoom 18) centered on the vehicle
-      map.flyTo([currentLocation.latitude, currentLocation.longitude], 18, {
-        animate: true,
-        duration: 0.85,
-      });
-    } else if (!isNavigating && prevNavigatingRef.current) {
-      // Zoom back out to show the entire route overview
-      const activeCoords: [number, number][] =
-        routeCoordinates && routeCoordinates.length >= 2
-          ? routeCoordinates
-          : destination
-          ? [
-              [currentLocation.latitude, currentLocation.longitude],
-              [destination.latitude, destination.longitude],
-            ]
-          : [];
-
-      if (activeCoords.length >= 2) {
-        const bounds = L.latLngBounds(activeCoords);
-        map.fitBounds(bounds, {
-          paddingTopLeft: [35, 130],
-          paddingBottomRight: [35, 220],
-          maxZoom: 16,
-          animate: true,
-        });
-      }
-    }
-
-    prevNavigatingRef.current = isNavigating;
-  }, [isNavigating]);
-
-  // 5. Update Vehicle Navigation Arrow Puck & Smooth Camera Tracking
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
-
-    // Google Maps iOS translucent white circle with rotating Blue Navigation Arrow
     const vehicleHtml = `
-      <div style="position: relative; width: 64px; height: 64px; display: flex; align-items: center; justify-content: center;">
-        <div style="width: 52px; height: 52px; border-radius: 9999px; background: rgba(255, 255, 255, 0.92); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25); border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; transform: rotate(${bearingDeg}deg); transition: transform 0.25s ease-out;">
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+      <div style="position: relative; width: ${puckSize}px; height: ${puckSize}px; display: flex; align-items: center; justify-content: center;">
+        <div style="width: ${innerSize}px; height: ${innerSize}px; border-radius: 9999px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28); border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; transform: rotate(${bearingDeg}deg); transition: transform 0.25s ease-out;">
+          <svg width="${svgSize}" height="${svgSize}" viewBox="0 0 24 24" fill="none">
             <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z" fill="#1A73E8" stroke="#1557B0" stroke-width="1.2" stroke-linejoin="round"/>
           </svg>
         </div>
@@ -307,8 +290,8 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     const icon = L.divIcon({
       html: vehicleHtml,
       className: 'gmaps-vehicle-puck',
-      iconSize: [64, 64],
-      iconAnchor: [32, 32],
+      iconSize: [puckSize, puckSize],
+      iconAnchor: [puckSize / 2, puckSize / 2],
     });
 
     if (!vehicleMarkerRef.current) {
@@ -324,8 +307,61 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
       vehicleMarkerRef.current.setIcon(icon);
     }
 
-    if (isFollowing && isNavigating) {
-      map.panTo([currentLocation.latitude, currentLocation.longitude], {
+    // Handle transition from Overview (Mode 1) -> Driving Mode (Mode 2)
+    if (isNavigating && !prevNavigatingRef.current) {
+      prevNavigatingRef.current = true;
+      map.invalidateSize();
+      const targetZoom = 18;
+      const targetCenter = getDrivingCameraCenter(
+        map,
+        currentLocation.latitude,
+        currentLocation.longitude,
+        targetZoom
+      );
+      map.setView(targetCenter, targetZoom, {
+        animate: true,
+        duration: 0.75,
+      });
+      return;
+    }
+
+    // Handle transition from Driving Mode (Mode 2) -> Overview (Mode 1)
+    if (!isNavigating && prevNavigatingRef.current) {
+      prevNavigatingRef.current = false;
+      map.invalidateSize();
+      const activeCoords: [number, number][] =
+        routeCoordinates && routeCoordinates.length >= 2
+          ? routeCoordinates
+          : destination
+          ? [
+              [currentLocation.latitude, currentLocation.longitude],
+              [destination.latitude, destination.longitude],
+            ]
+          : [];
+
+      if (activeCoords.length >= 2) {
+        const bounds = L.latLngBounds(activeCoords);
+        map.fitBounds(bounds, {
+          paddingTopLeft: [35, 130],
+          paddingBottomRight: [35, 220],
+          maxZoom: 15,
+          animate: true,
+        });
+      }
+      return;
+    }
+
+    // Continuous street-level camera tracking while driving (Mode 2)
+    if (isNavigating && isFollowing) {
+      const currentZoom = map.getZoom();
+      const targetZoom = currentZoom < 17 ? 18 : currentZoom;
+      const targetCenter = getDrivingCameraCenter(
+        map,
+        currentLocation.latitude,
+        currentLocation.longitude,
+        targetZoom
+      );
+      map.setView(targetCenter, targetZoom, {
         animate: true,
         duration: 0.3,
       });
@@ -346,10 +382,28 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     mapInstanceRef.current?.zoomOut();
   };
 
+  // In Driving Mode (Mode 2), apply a gentle 28° perspective tilt (NO Z-rotation so dragging is NEVER inverted and street names are NEVER upside-down!)
+  const drivingPerspectiveStyle: React.CSSProperties =
+    isNavigating && is3DMode
+      ? {
+          width: '100%',
+          height: '100%',
+          transform: 'perspective(1100px) rotateX(26deg) scale(1.10)',
+          transformOrigin: '50% 68%',
+          transition: 'transform 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
+        }
+      : {
+          width: '100%',
+          height: '100%',
+          transform: 'none',
+          transition: 'transform 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
+        };
+
   return (
     <div className="relative w-full h-full overflow-hidden bg-[#e5e3df] select-none">
-      {/* Native Google Maps Vietnam Tile Canvas (Zero CSS distortion, 100% natural pan & zoom) */}
-      <div ref={mapContainerRef} className="w-full h-full" />
+      <div style={drivingPerspectiveStyle}>
+        <div ref={mapContainerRef} className="w-full h-full" />
+      </div>
 
       {/* Zoom In / Zoom Out Controls (+ / -) */}
       <div
