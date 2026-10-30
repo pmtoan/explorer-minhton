@@ -94,6 +94,7 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [is3DMode, setIs3DMode] = useState(true);
   const [isFollowingVehicle, setIsFollowingVehicle] = useState(true);
+  const [recenterTrigger, setRecenterTrigger] = useState(0);
   const [mapStyle, setMapStyle] = useState<MapLayerStyle>('vector3d');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
 
@@ -290,6 +291,12 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
     }
   };
 
+  const handleRecenterToVehicle = () => {
+    setIsFollowingVehicle(true);
+    setIs3DMode(true);
+    setRecenterTrigger((c) => c + 1);
+  };
+
   const handleStartTurnByTurn = () => {
     if (!selectedPlace) return;
 
@@ -304,6 +311,7 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
     setIsFollowingVehicle(true);
     setIs3DMode(true);
     setMode('navigating');
+    setRecenterTrigger((c) => c + 1);
 
     const firstStep = calculatedRoute?.steps?.[0];
     if (firstStep) {
@@ -408,6 +416,7 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
           is3DMode={is3DMode}
           isFollowing={mode === 'navigating' ? isFollowingVehicle : false}
           isNavigating={mode === 'navigating'}
+          recenterTrigger={recenterTrigger}
           mapStyle={mapStyle}
           onUserDragMap={() => {
             if (mode === 'navigating') {
@@ -727,10 +736,20 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
           {/* 2. LEFT FLOATING "VỀ GIỮA" PILL & SPEEDOMETER */}
           <div className="absolute bottom-28 left-4 z-[500] flex flex-col items-start gap-2.5">
             <button
-              onClick={() => setIsFollowingVehicle(true)}
-              className="px-4 py-2.5 rounded-full bg-white text-slate-800 font-bold text-sm shadow-xl border border-slate-200 flex items-center gap-2 active:scale-95 transition-transform"
+              onClick={handleRecenterToVehicle}
+              className={`px-4 py-2.5 rounded-full font-bold text-sm shadow-2xl border flex items-center gap-2 active:scale-95 transition-all ${
+                !isFollowingVehicle
+                  ? 'bg-[#00695c] text-white border-teal-400 animate-bounce'
+                  : 'bg-white text-slate-800 border-slate-200'
+              }`}
             >
-              <Navigation className="w-4 h-4 fill-[#00695c] text-[#00695c]" />
+              <Navigation
+                className={`w-4 h-4 ${
+                  !isFollowingVehicle
+                    ? 'fill-white text-white'
+                    : 'fill-[#00695c] text-[#00695c]'
+                }`}
+              />
               <span>Về giữa</span>
             </button>
 

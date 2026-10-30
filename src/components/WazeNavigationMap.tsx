@@ -18,6 +18,7 @@ interface WazeNavigationMapProps {
   is3DMode?: boolean;
   isFollowing?: boolean;
   isNavigating?: boolean;
+  recenterTrigger?: number;
   mapStyle?: MapLayerStyle;
   onUserDragMap?: () => void;
   onMapClickSelect?: (lat: number, lon: number) => void;
@@ -32,6 +33,7 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
   is3DMode = true,
   isFollowing = true,
   isNavigating = false,
+  recenterTrigger = 0,
   mapStyle = 'vector3d',
   onUserDragMap,
   onMapClickSelect,
@@ -51,20 +53,45 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
   const onMapClickRef = useRef(onMapClickSelect);
   onMapClickRef.current = onMapClickSelect;
 
-  // Helper: Compute camera target center so vehicle sits in the lower-third of the screen in Driving Mode
+  /**
+   * Compute the camera center AHEAD of the vehicle along its travel bearing (`bearingDeg`),
+   * so that the vehicle sits in the lower-third of the screen and 70% of the screen ahead
+   * shows the upcoming blue route (works for North, South, East, West, or any angle!).
+   */
   const getDrivingCameraCenter = (
     map: L.Map,
     lat: number,
     lon: number,
+    bearing: number,
     targetZoom: number
   ): L.LatLng => {
     const size = map.getSize();
-    const offsetY = size.y > 0 ? size.y * 0.18 : 110;
+    const offsetPx = size.y > 0 ? Math.min(140, size.y * 0.2) : 110;
+    const rad = (bearing * Math.PI) / 180;
+    // Unit vector pointing ahead along compass bearing in screen pixels (x: East, y: South)
+    const dx = Math.sin(rad) * offsetPx;
+    const dy = -Math.cos(rad) * offsetPx;
+
     const projected = map.project([lat, lon], targetZoom);
-    // Subtract Y in pixel space so the map center is ahead (north) of the vehicle,
-    // placing the vehicle puck in the lower-third of the screen!
-    const shifted = L.point(projected.x, projected.y - offsetY);
+    const shifted = L.point(projected.x + dx, projected.y + dy);
     return map.unproject(shifted, targetZoom);
+  };
+
+  /**
+   * Force-snap the camera to street-level driving view (zoom 18) locked onto the vehicle.
+   * Uses `map.stop()` + `animate: false` to bypass Leaflet's `_animatingZoom` guard that drops zoom changes.
+   */
+  const snapCameraToVehicleStreetView = (
+    map: L.Map,
+    lat: number,
+    lon: number,
+    bearing: number,
+    targetZoom = 18
+  ) => {
+    map.stop();
+    map.invalidateSize({ animate: false });
+    const targetCenter = getDrivingCameraCenter(map, lat, lon, bearing, targetZoom);
+    map.setView(targetCenter, targetZoom, { animate: false });
   };
 
   // 1. Initialize Leaflet Map once
@@ -106,7 +133,7 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     mapInstanceRef.current = map;
 
     const timer = setTimeout(() => {
-      map.invalidateSize();
+      map.invalidateSize({ animate: false });
     }, 150);
 
     return () => {
@@ -252,12 +279,13 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
         lastFittedDestKeyRef.current !== destKey
       ) {
         lastFittedDestKeyRef.current = destKey;
+        map.stop();
         const bounds = L.latLngBounds(activeCoords);
         map.fitBounds(bounds, {
           paddingTopLeft: [35, 130],
           paddingBottomRight: [35, 220],
           maxZoom: 15,
-          animate: true,
+          animate: false,
         });
       }
     } else if (destinationMarkerRef.current) {
@@ -267,7 +295,22 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     }
   }, [destination, routeCoordinates, traveledPoints, isNavigating]);
 
-  // 4. Unified Camera Controller: Mode 1 (Overview) vs Mode 2 (Close-up Street Driving View)
+  // 4. Explicit "Về giữa" (Re-center) Trigger Effect
+  useEffect(() => {
+    if (recenterTrigger === 0) return;
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    snapCameraToVehicleStreetView(
+      map,
+      currentLocation.latitude,
+      currentLocation.longitude,
+      bearingDeg,
+      18
+    );
+  }, [recenterTrigger]);
+
+  // 5. Unified Camera Controller: Mode 1 (Overview) vs Mode 2 (Close-up Street Driving View)
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -279,7 +322,7 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
 
     const vehicleHtml = `
       <div style="position: relative; width: ${puckSize}px; height: ${puckSize}px; display: flex; align-items: center; justify-content: center;">
-        <div style="width: ${innerSize}px; height: ${innerSize}px; border-radius: 9999px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28); border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; transform: rotate(${bearingDeg}deg); transition: transform 0.25s ease-out;">
+        <div style="width: ${innerSize}px; height: ${innerSize}px; border-radius: 9999px; background: rgba(255, 255, 255, 0.95); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.30); border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; transform: rotate(${bearingDeg}deg); transition: transform 0.25s ease-out;">
           <svg width="${svgSize}" height="${svgSize}" viewBox="0 0 24 24" fill="none">
             <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z" fill="#1A73E8" stroke="#1557B0" stroke-width="1.2" stroke-linejoin="round"/>
           </svg>
@@ -307,28 +350,35 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
       vehicleMarkerRef.current.setIcon(icon);
     }
 
-    // Handle transition from Overview (Mode 1) -> Driving Mode (Mode 2)
+    // Transition from Overview (Mode 1) -> Driving Mode (Mode 2)
     if (isNavigating && !prevNavigatingRef.current) {
       prevNavigatingRef.current = true;
-      map.invalidateSize();
-      const targetZoom = 18;
-      const targetCenter = getDrivingCameraCenter(
+      snapCameraToVehicleStreetView(
         map,
         currentLocation.latitude,
         currentLocation.longitude,
-        targetZoom
+        bearingDeg,
+        18
       );
-      map.setView(targetCenter, targetZoom, {
-        animate: true,
-        duration: 0.75,
-      });
-      return;
+      const timer = setTimeout(() => {
+        if (mapInstanceRef.current) {
+          snapCameraToVehicleStreetView(
+            mapInstanceRef.current,
+            currentLocation.latitude,
+            currentLocation.longitude,
+            bearingDeg,
+            18
+          );
+        }
+      }, 120);
+      return () => clearTimeout(timer);
     }
 
-    // Handle transition from Driving Mode (Mode 2) -> Overview (Mode 1)
+    // Transition from Driving Mode (Mode 2) -> Overview (Mode 1)
     if (!isNavigating && prevNavigatingRef.current) {
       prevNavigatingRef.current = false;
-      map.invalidateSize();
+      map.stop();
+      map.invalidateSize({ animate: false });
       const activeCoords: [number, number][] =
         routeCoordinates && routeCoordinates.length >= 2
           ? routeCoordinates
@@ -345,7 +395,7 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
           paddingTopLeft: [35, 130],
           paddingBottomRight: [35, 220],
           maxZoom: 15,
-          animate: true,
+          animate: false,
         });
       }
       return;
@@ -354,17 +404,27 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     // Continuous street-level camera tracking while driving (Mode 2)
     if (isNavigating && isFollowing) {
       const currentZoom = map.getZoom();
-      const targetZoom = currentZoom < 17 ? 18 : currentZoom;
-      const targetCenter = getDrivingCameraCenter(
-        map,
-        currentLocation.latitude,
-        currentLocation.longitude,
-        targetZoom
-      );
-      map.setView(targetCenter, targetZoom, {
-        animate: true,
-        duration: 0.3,
-      });
+      if (currentZoom < 17) {
+        snapCameraToVehicleStreetView(
+          map,
+          currentLocation.latitude,
+          currentLocation.longitude,
+          bearingDeg,
+          18
+        );
+      } else {
+        const targetCenter = getDrivingCameraCenter(
+          map,
+          currentLocation.latitude,
+          currentLocation.longitude,
+          bearingDeg,
+          currentZoom
+        );
+        map.panTo(targetCenter, {
+          animate: true,
+          duration: 0.28,
+        });
+      }
     }
   }, [
     currentLocation.latitude,
@@ -379,10 +439,13 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
   };
 
   const handleZoomOut = () => {
+    if (onUserDragRef.current) {
+      onUserDragRef.current();
+    }
     mapInstanceRef.current?.zoomOut();
   };
 
-  // In Driving Mode (Mode 2), apply a gentle 28° perspective tilt (NO Z-rotation so dragging is NEVER inverted and street names are NEVER upside-down!)
+  // Gentle 26° perspective tilt in 3D Driving Mode
   const drivingPerspectiveStyle: React.CSSProperties =
     isNavigating && is3DMode
       ? {
