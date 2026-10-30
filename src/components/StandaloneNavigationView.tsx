@@ -345,7 +345,8 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
       ? navigationRoutingService.getLiveProgress(
           calculatedRoute,
           effectiveLocation,
-          selectedPlace
+          selectedPlace,
+          activeTrip.route.points
         )
       : null;
 

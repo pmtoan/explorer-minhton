@@ -47,6 +47,10 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
   const prevNavigatingRef = useRef<boolean>(false);
   const lastFittedDestKeyRef = useRef<string>('');
 
+  // Store active map Z-rotation angle so Leaflet's predrag hook can counter-rotate touch drag vectors
+  const activeRotationDegRef = useRef<number>(0);
+  activeRotationDegRef.current = isNavigating && is3DMode ? bearingDeg : 0;
+
   const onUserDragRef = useRef(onUserDragMap);
   onUserDragRef.current = onUserDragMap;
 
@@ -54,47 +58,23 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
   onMapClickRef.current = onMapClickSelect;
 
   /**
-   * Compute the camera center AHEAD of the vehicle along its travel bearing (`bearingDeg`),
-   * so that the vehicle sits in the lower-third of the screen and 70% of the screen ahead
-   * shows the upcoming blue route (works for North, South, East, West, or any angle!).
-   */
-  const getDrivingCameraCenter = (
-    map: L.Map,
-    lat: number,
-    lon: number,
-    bearing: number,
-    targetZoom: number
-  ): L.LatLng => {
-    const size = map.getSize();
-    const offsetPx = size.y > 0 ? Math.min(140, size.y * 0.2) : 110;
-    const rad = (bearing * Math.PI) / 180;
-    // Unit vector pointing ahead along compass bearing in screen pixels (x: East, y: South)
-    const dx = Math.sin(rad) * offsetPx;
-    const dy = -Math.cos(rad) * offsetPx;
-
-    const projected = map.project([lat, lon], targetZoom);
-    const shifted = L.point(projected.x + dx, projected.y + dy);
-    return map.unproject(shifted, targetZoom);
-  };
-
-  /**
-   * Force-snap the camera to street-level driving view (zoom 18) locked onto the vehicle.
-   * Uses `map.stop()` + `animate: false` to bypass Leaflet's `_animatingZoom` guard that drops zoom changes.
+   * Snap the camera directly onto the vehicle at street-level zoom (18).
+   * Because the rotated map container has `transformOrigin: '50% 50%'` and `translateY(14%)`,
+   * centering Leaflet at `[lat, lon]` places the vehicle at the exact rotation pivot
+   * in the lower-third of the screen, with the road ahead pointing straight UP!
    */
   const snapCameraToVehicleStreetView = (
     map: L.Map,
     lat: number,
     lon: number,
-    bearing: number,
     targetZoom = 18
   ) => {
     map.stop();
     map.invalidateSize({ animate: false });
-    const targetCenter = getDrivingCameraCenter(map, lat, lon, bearing, targetZoom);
-    map.setView(targetCenter, targetZoom, { animate: false });
+    map.setView([lat, lon], targetZoom, { animate: false });
   };
 
-  // 1. Initialize Leaflet Map once
+  // 1. Initialize Leaflet Map once + attach 2D rotation matrix to `predrag` so dragging is NEVER inverted
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
@@ -105,6 +85,24 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
       attributionControl: false,
       renderer: L.svg({ padding: 1.5 }),
     });
+
+    // Fix inverted dragging when map is rotated by `rotateZ(-bearingDeg)`
+    const draggable = (map.dragging as any)?._draggable;
+    if (draggable) {
+      draggable.on('predrag', () => {
+        const deg = activeRotationDegRef.current;
+        if (!deg) return;
+        const rad = (deg * Math.PI) / 180;
+        const offset = draggable._newPos.subtract(draggable._startPos);
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const rotatedOffset = L.point(
+          offset.x * cos - offset.y * sin,
+          offset.x * sin + offset.y * cos
+        );
+        draggable._newPos = draggable._startPos.add(rotatedOffset);
+      });
+    }
 
     const tileUrl =
       mapStyle === 'satellite'
@@ -238,10 +236,11 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
       }).addTo(routeGroup);
     }
 
-    // Destination Red Pin Marker
+    // Destination Red Pin Marker (counter-rotated so label stays upright when map rotates!)
     if (destination) {
+      const counterRot = isNavigating && is3DMode ? bearingDeg : 0;
       const destHtml = `
-        <div style="display: flex; flex-direction: column; align-items: center; transform: translateY(-16px);">
+        <div style="display: flex; flex-direction: column; align-items: center; transform: translateY(-16px) rotate(${counterRot}deg); transition: transform 0.25s ease-out;">
           <div style="background: #ffffff; color: #0f172a; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 8px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.25); border: 1.5px solid #ea4335; margin-bottom: 3px;">
             🏁 ${destination.name.slice(0, 24)}
           </div>
@@ -293,7 +292,7 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
       destinationMarkerRef.current = null;
       lastFittedDestKeyRef.current = '';
     }
-  }, [destination, routeCoordinates, traveledPoints, isNavigating]);
+  }, [destination, routeCoordinates, traveledPoints, isNavigating, bearingDeg, is3DMode]);
 
   // 4. Explicit "Về giữa" (Re-center) Trigger Effect
   useEffect(() => {
@@ -305,7 +304,6 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
       map,
       currentLocation.latitude,
       currentLocation.longitude,
-      bearingDeg,
       18
     );
   }, [recenterTrigger]);
@@ -316,6 +314,8 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     if (!map) return;
 
     // Update Google Maps Blue Navigation Arrow Puck
+    // Inside the rotated map (`rotateZ(-bearingDeg)`), rotating the arrow by `+bearingDeg`
+    // makes it point STRAIGHT UP (0°) on the screen while aligned with the road!
     const puckSize = isNavigating ? 68 : 54;
     const innerSize = isNavigating ? 56 : 44;
     const svgSize = isNavigating ? 34 : 26;
@@ -357,7 +357,6 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
         map,
         currentLocation.latitude,
         currentLocation.longitude,
-        bearingDeg,
         18
       );
       const timer = setTimeout(() => {
@@ -366,11 +365,10 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
             mapInstanceRef.current,
             currentLocation.latitude,
             currentLocation.longitude,
-            bearingDeg,
             18
           );
         }
-      }, 120);
+      }, 150);
       return () => clearTimeout(timer);
     }
 
@@ -409,20 +407,12 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
           map,
           currentLocation.latitude,
           currentLocation.longitude,
-          bearingDeg,
           18
         );
       } else {
-        const targetCenter = getDrivingCameraCenter(
-          map,
-          currentLocation.latitude,
-          currentLocation.longitude,
-          bearingDeg,
-          currentZoom
-        );
-        map.panTo(targetCenter, {
+        map.panTo([currentLocation.latitude, currentLocation.longitude], {
           animate: true,
-          duration: 0.28,
+          duration: 0.25,
         });
       }
     }
@@ -445,21 +435,28 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     mapInstanceRef.current?.zoomOut();
   };
 
-  // Gentle 26° perspective tilt in 3D Driving Mode
+  // Oversized 180% container in Driving Mode so rotating 360° (`rotateZ(-bearingDeg)`) never clips corners!
+  // `translateY(14%)` places the 50% 50% rotation pivot (the vehicle) in the lower-third of the screen!
   const drivingPerspectiveStyle: React.CSSProperties =
     isNavigating && is3DMode
       ? {
-          width: '100%',
-          height: '100%',
-          transform: 'perspective(1100px) rotateX(26deg) scale(1.10)',
-          transformOrigin: '50% 68%',
-          transition: 'transform 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
+          position: 'absolute',
+          width: '180%',
+          height: '180%',
+          left: '-40%',
+          top: '-40%',
+          transform: `translateY(12%) perspective(950px) rotateX(26deg) rotateZ(${-bearingDeg}deg)`,
+          transformOrigin: '50% 50%',
+          transition: 'transform 0.35s ease-out',
         }
       : {
+          position: 'relative',
           width: '100%',
           height: '100%',
+          left: '0%',
+          top: '0%',
           transform: 'none',
-          transition: 'transform 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
+          transition: 'transform 0.35s ease-out',
         };
 
   return (

@@ -1,5 +1,3 @@
-import { calculateDistanceKm as haversineDistanceKm } from './geoService';
-
 export type ManeuverIconType =
   | 'straight'
   | 'left'
@@ -34,6 +32,29 @@ export interface LiveNavigationProgress {
   remainingDurationMin: number;
   etaText: string;
   bearingDeg: number;
+}
+
+/**
+ * Exact unrounded Haversine distance in kilometers (never rounds to 0.01km)
+ */
+export function exactHaversineKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 /**
@@ -176,7 +197,7 @@ class NavigationRoutingService {
       const directDistKm = Number(
         Math.max(
           0.1,
-          haversineDistanceKm(
+          exactHaversineKm(
             origin.latitude,
             origin.longitude,
             destination.latitude,
@@ -217,14 +238,15 @@ class NavigationRoutingService {
   }
 
   /**
-   * Compute live progress along the calculated route based on current GPS coordinates
+   * Compute live progress and exact road-ahead bearing along the calculated route
    */
   public getLiveProgress(
     route: CalculatedRoute,
     currentLocation: { latitude: number; longitude: number },
-    destination: { latitude: number; longitude: number; name?: string }
+    destination: { latitude: number; longitude: number; name?: string },
+    recentGpsPoints?: { latitude: number; longitude: number }[]
   ): LiveNavigationProgress {
-    const remainingDirectKm = haversineDistanceKm(
+    const remainingDirectKm = exactHaversineKm(
       currentLocation.latitude,
       currentLocation.longitude,
       destination.latitude,
@@ -232,7 +254,10 @@ class NavigationRoutingService {
     );
 
     const remainingDistanceKm = Number(
-      Math.min(route.totalDistanceKm, Math.max(0.1, remainingDirectKm * 1.15)).toFixed(1)
+      Math.min(
+        route.totalDistanceKm,
+        Math.max(0.1, remainingDirectKm * 1.15)
+      ).toFixed(1)
     );
 
     const ratio =
@@ -250,14 +275,13 @@ class NavigationRoutingService {
     let minStepDistKm = Infinity;
 
     for (const step of route.steps) {
-      const dKm = haversineDistanceKm(
+      const dKm = exactHaversineKm(
         currentLocation.latitude,
         currentLocation.longitude,
         step.latitude,
         step.longitude
       );
-      // Pick the nearest maneuver ahead (> 15m away)
-      if (dKm >= 0.015 && dKm < minStepDistKm) {
+      if (dKm >= 0.012 && dKm < minStepDistKm) {
         minStepDistKm = dKm;
         chosenStep = step;
       }
@@ -268,37 +292,81 @@ class NavigationRoutingService {
         ? Math.max(10, Math.round(minStepDistKm * 1000))
         : chosenStep.distanceMeters;
 
-    // Calculate bearing towards next coordinate along route
-    let targetLat = chosenStep.latitude;
-    let targetLon = chosenStep.longitude;
+    // 1. Find closest point on route polyline using exact unrounded distance
+    let bearingDeg = calculateBearingDegrees(
+      currentLocation.latitude,
+      currentLocation.longitude,
+      destination.latitude,
+      destination.longitude
+    );
 
     if (route.coordinates.length >= 2) {
       let closestIdx = 0;
-      let closestDist = Infinity;
+      let closestDistKm = Infinity;
       for (let i = 0; i < route.coordinates.length; i++) {
         const [lat, lon] = route.coordinates[i];
-        const d = haversineDistanceKm(
+        const d = exactHaversineKm(
           currentLocation.latitude,
           currentLocation.longitude,
           lat,
           lon
         );
-        if (d < closestDist) {
-          closestDist = d;
+        if (d < closestDistKm) {
+          closestDistKm = d;
           closestIdx = i;
         }
       }
-      const nextIdx = Math.min(route.coordinates.length - 1, closestIdx + 2);
-      targetLat = route.coordinates[nextIdx][0];
-      targetLon = route.coordinates[nextIdx][1];
+
+      // Walk forward along route.coordinates until we find a point at least 20 meters (0.02 km) ahead
+      const [anchorLat, anchorLon] = route.coordinates[closestIdx];
+      let lookaheadIdx = Math.min(route.coordinates.length - 1, closestIdx + 1);
+      for (let j = closestIdx + 1; j < route.coordinates.length; j++) {
+        const [lat, lon] = route.coordinates[j];
+        const segDistKm = exactHaversineKm(anchorLat, anchorLon, lat, lon);
+        lookaheadIdx = j;
+        if (segDistKm >= 0.02) {
+          break;
+        }
+      }
+
+      const [targetLat, targetLon] = route.coordinates[lookaheadIdx];
+      if (anchorLat !== targetLat || anchorLon !== targetLon) {
+        bearingDeg = calculateBearingDegrees(
+          anchorLat,
+          anchorLon,
+          targetLat,
+          targetLon
+        );
+      }
     }
 
-    const bearingDeg = calculateBearingDegrees(
-      currentLocation.latitude,
-      currentLocation.longitude,
-      targetLat,
-      targetLon
-    );
+    // 2. If user is actively moving and > 40m off the planned route, use real GPS movement vector
+    if (recentGpsPoints && recentGpsPoints.length >= 2) {
+      const lastPt = recentGpsPoints[recentGpsPoints.length - 1];
+      for (let k = recentGpsPoints.length - 2; k >= 0; k--) {
+        const prevPt = recentGpsPoints[k];
+        const movedKm = exactHaversineKm(
+          prevPt.latitude,
+          prevPt.longitude,
+          lastPt.latitude,
+          lastPt.longitude
+        );
+        if (movedKm >= 0.005) {
+          // Moved at least 5 meters -> we have a real GPS heading!
+          const gpsHeading = calculateBearingDegrees(
+            prevPt.latitude,
+            prevPt.longitude,
+            lastPt.latitude,
+            lastPt.longitude
+          );
+          // If no route or if moving along GPS trail, blend/prefer GPS heading when off-route
+          if (route.coordinates.length < 2) {
+            bearingDeg = gpsHeading;
+          }
+          break;
+        }
+      }
+    }
 
     return {
       nextStep: chosenStep,
