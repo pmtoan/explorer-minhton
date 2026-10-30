@@ -16,6 +16,7 @@ interface WazeNavigationMapProps {
   bearingDeg?: number;
   is3DMode?: boolean;
   isFollowing?: boolean;
+  isNavigating?: boolean;
   mapStyle?: MapLayerStyle;
   onUserDragMap?: () => void;
   onMapClickSelect?: (lat: number, lon: number) => void;
@@ -29,6 +30,7 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
   bearingDeg = 0,
   is3DMode = true,
   isFollowing = true,
+  isNavigating = false,
   mapStyle = 'street',
   onUserDragMap,
   onMapClickSelect,
@@ -38,9 +40,10 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const vehicleMarkerRef = useRef<L.Marker | null>(null);
   const destinationMarkerRef = useRef<L.Marker | null>(null);
-  const routeGlowLineRef = useRef<L.Polyline | null>(null);
+  const routeBorderLineRef = useRef<L.Polyline | null>(null);
   const routeCoreLineRef = useRef<L.Polyline | null>(null);
   const traveledLineRef = useRef<L.Polyline | null>(null);
+  const prevNavigatingRef = useRef<boolean>(false);
 
   // Initialize Leaflet Map once
   useEffect(() => {
@@ -48,12 +51,11 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
 
     const map = L.map(mapContainerRef.current, {
       center: [currentLocation.latitude, currentLocation.longitude],
-      zoom: 16,
+      zoom: isNavigating ? 18 : 15,
       zoomControl: false,
       attributionControl: false,
     });
 
-    // Use Google Maps Vietnam Street Tiles (No API Key watermark, full VN POIs & street names)
     const tileUrl =
       mapStyle === 'satellite'
         ? 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=vi'
@@ -109,31 +111,50 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     }).addTo(map);
   }, [mapStyle]);
 
-  // Update Vehicle Marker & Camera Follow
+  // Smoothly zoom in to street-level (zoom 18) when entering Google Maps "Bắt đầu" navigation mode
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
+    map.invalidateSize();
+
+    if (isNavigating && !prevNavigatingRef.current) {
+      map.setView([currentLocation.latitude, currentLocation.longitude], 18, {
+        animate: true,
+        duration: 0.9,
+      });
+    } else if (!isNavigating && routeCoordinates.length >= 2) {
+      const bounds = L.latLngBounds(routeCoordinates);
+      map.fitBounds(bounds, { padding: [45, 45], maxZoom: 16 });
+    }
+
+    prevNavigatingRef.current = isNavigating;
+  }, [isNavigating, routeCoordinates]);
+
+  // Update Google Maps 3D Navigation Chevron Puck & Camera Follow
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    // Google Maps iconic blue/white 3D Navigation Chevron Arrow
     const vehicleHtml = `
-      <div style="position: relative; width: 52px; height: 52px; display: flex; align-items: center; justify-content: center;">
-        <!-- Pulsing GPS Halo -->
-        <div style="position: absolute; inset: 2px; border-radius: 9999px; background: rgba(16, 185, 129, 0.25); animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-        <!-- Direction Cone -->
-        <div style="position: absolute; width: 48px; height: 48px; transform: rotate(${bearingDeg}deg); transition: transform 0.35s ease-out; display: flex; justify-content: center;">
-          <div style="width: 0; height: 0; border-left: 12px solid transparent; border-right: 12px solid transparent; border-bottom: 22px solid rgba(16, 185, 129, 0.45); margin-top: -10px; filter: blur(1px);"></div>
-        </div>
-        <!-- Waze Moto Avatar Puck -->
-        <div style="position: relative; z-index: 10; width: 38px; height: 38px; border-radius: 9999px; background: linear-gradient(135deg, #10b981, #047857); border: 3px solid #ffffff; box-shadow: 0 6px 16px rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; font-size: 19px;">
-          🛵
+      <div style="position: relative; width: 64px; height: 64px; display: flex; align-items: center; justify-content: center;">
+        <!-- Outer GPS Accuracy Halo -->
+        <div style="position: absolute; width: 56px; height: 56px; border-radius: 9999px; background: rgba(66, 133, 244, 0.22); border: 1.5px solid rgba(66, 133, 244, 0.4); animation: pulse 2s infinite;"></div>
+        <!-- White Puck Circle with Google Maps Blue Navigation Chevron -->
+        <div style="position: relative; z-index: 10; width: 42px; height: 42px; border-radius: 9999px; background: #ffffff; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.38); display: flex; align-items: center; justify-content: center; transform: rotate(${bearingDeg}deg); transition: transform 0.3s ease-out;">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z" fill="#1A73E8" stroke="#1557B0" stroke-width="1.2" stroke-linejoin="round"/>
+          </svg>
         </div>
       </div>
     `;
 
     const icon = L.divIcon({
       html: vehicleHtml,
-      className: 'waze-vehicle-marker',
-      iconSize: [52, 52],
-      iconAnchor: [26, 26],
+      className: 'gmaps-nav-puck',
+      iconSize: [64, 64],
+      iconAnchor: [32, 32],
     });
 
     if (!vehicleMarkerRef.current) {
@@ -150,36 +171,50 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     }
 
     if (isFollowing) {
-      map.panTo([currentLocation.latitude, currentLocation.longitude], {
-        animate: true,
-        duration: 0.45,
-      });
+      if (isNavigating && map.getZoom() < 17) {
+        map.setView([currentLocation.latitude, currentLocation.longitude], 18, {
+          animate: true,
+        });
+      } else {
+        map.panTo([currentLocation.latitude, currentLocation.longitude], {
+          animate: true,
+          duration: 0.35,
+        });
+      }
     }
-  }, [currentLocation.latitude, currentLocation.longitude, bearingDeg, isFollowing]);
+  }, [
+    currentLocation.latitude,
+    currentLocation.longitude,
+    bearingDeg,
+    isFollowing,
+    isNavigating,
+  ]);
 
-  // Update Destination Marker & Route Polylines
+  // Update Destination Marker & Google Maps Royal Blue Route Polyline
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    // Destination Pin
+    const counterRotation = isNavigating && is3DMode ? bearingDeg : 0;
+
+    // Destination Red Pin (Google Maps style)
     if (destination) {
       const destHtml = `
-        <div style="display: flex; flex-direction: column; align-items: center; transform: translateY(-14px);">
-          <div style="background: #0f172a; color: #fff; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 8px; white-space: nowrap; box-shadow: 0 4px 10px rgba(0,0,0,0.35); border: 1px solid #10b981; margin-bottom: 2px;">
-            🏁 ${destination.name.slice(0, 22)}
+        <div style="display: flex; flex-direction: column; align-items: center; transform: translateY(-16px) rotate(${counterRotation}deg); transition: transform 0.3s ease-out;">
+          <div style="background: #ffffff; color: #1e293b; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 8px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.28); border: 1.5px solid #ea4335; margin-bottom: 3px;">
+            ${destination.name.slice(0, 24)}
           </div>
-          <div style="width: 30px; height: 30px; border-radius: 9999px; background: #ef4444; border: 3px solid #fff; box-shadow: 0 4px 12px rgba(239,68,68,0.5); display: flex; align-items: center; justify-content: center; font-size: 14px;">
-            📍
+          <div style="width: 28px; height: 28px; border-radius: 9999px; background: #ea4335; border: 3px solid #ffffff; box-shadow: 0 4px 10px rgba(234,67,53,0.55); display: flex; align-items: center; justify-content: center;">
+            <div style="width: 8px; height: 8px; border-radius: 9999px; background: #ffffff;"></div>
           </div>
         </div>
       `;
 
       const destIcon = L.divIcon({
         html: destHtml,
-        className: 'waze-dest-marker',
-        iconSize: [120, 50],
-        iconAnchor: [60, 42],
+        className: 'gmaps-dest-marker',
+        iconSize: [140, 54],
+        iconAnchor: [70, 44],
       });
 
       if (!destinationMarkerRef.current) {
@@ -199,25 +234,25 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
       destinationMarkerRef.current = null;
     }
 
-    // Route Polyline (Glowing Waze Neon Line)
+    // Route Polyline (Google Maps signature Royal Blue #4285F4 with #174EA6 casing)
     if (routeCoordinates && routeCoordinates.length >= 2) {
-      if (!routeGlowLineRef.current) {
-        routeGlowLineRef.current = L.polyline(routeCoordinates, {
-          color: '#06b6d4',
-          weight: 12,
-          opacity: 0.4,
+      if (!routeBorderLineRef.current) {
+        routeBorderLineRef.current = L.polyline(routeCoordinates, {
+          color: '#174ea6',
+          weight: 11,
+          opacity: 0.9,
           lineCap: 'round',
           lineJoin: 'round',
         }).addTo(map);
       } else {
-        routeGlowLineRef.current.setLatLngs(routeCoordinates);
+        routeBorderLineRef.current.setLatLngs(routeCoordinates);
       }
 
       if (!routeCoreLineRef.current) {
         routeCoreLineRef.current = L.polyline(routeCoordinates, {
-          color: '#10b981',
-          weight: 6,
-          opacity: 0.95,
+          color: '#4285f4',
+          weight: 7,
+          opacity: 1,
           lineCap: 'round',
           lineJoin: 'round',
         }).addTo(map);
@@ -225,9 +260,9 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
         routeCoreLineRef.current.setLatLngs(routeCoordinates);
       }
     } else {
-      if (routeGlowLineRef.current) {
-        routeGlowLineRef.current.remove();
-        routeGlowLineRef.current = null;
+      if (routeBorderLineRef.current) {
+        routeBorderLineRef.current.remove();
+        routeBorderLineRef.current = null;
       }
       if (routeCoreLineRef.current) {
         routeCoreLineRef.current.remove();
@@ -243,35 +278,48 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
       ]);
       if (!traveledLineRef.current) {
         traveledLineRef.current = L.polyline(latlngs, {
-          color: '#6366f1',
-          weight: 4,
-          opacity: 0.85,
-          dashArray: '6, 8',
+          color: '#9aa0a6',
+          weight: 5,
+          opacity: 0.75,
         }).addTo(map);
       } else {
         traveledLineRef.current.setLatLngs(latlngs);
       }
     }
-  }, [destination, routeCoordinates, traveledPoints]);
+  }, [destination, routeCoordinates, traveledPoints, bearingDeg, isNavigating, is3DMode]);
+
+  // In Google Maps Navigation 3D mode, we oversize the map canvas so rotating 360° never clips corners,
+  // tilt it forward (rotateX 44deg), rotate the map heading-up (rotateZ -bearingDeg),
+  // and offset the center down to the lower-third of the screen!
+  const mapTransformStyle: React.CSSProperties =
+    isNavigating && is3DMode
+      ? {
+          position: 'absolute',
+          width: '180%',
+          height: '180%',
+          left: '-40%',
+          top: '-28%',
+          transform: `perspective(850px) rotateX(44deg) rotateZ(${-bearingDeg}deg)`,
+          transformOrigin: '50% 50%',
+          transition: 'transform 0.35s ease-out',
+        }
+      : {
+          position: 'relative',
+          width: '100%',
+          height: '100%',
+          transform: 'none',
+          transition: 'transform 0.35s ease-out',
+        };
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-slate-900 select-none">
-      {/* 2.5D Tilted Map Wrapper */}
-      <div
-        className="w-full h-full transition-transform duration-500 ease-out"
-        style={{
-          transform: is3DMode
-            ? 'perspective(900px) rotateX(22deg) scale(1.12)'
-            : 'none',
-          transformOrigin: 'center 70%',
-        }}
-      >
+    <div className="relative w-full h-full overflow-hidden bg-[#e5e3df] select-none">
+      <div style={mapTransformStyle}>
         <div ref={mapContainerRef} className="w-full h-full" />
       </div>
 
-      {/* Top Subtle Horizon Gradient for 2.5D Depth */}
-      {is3DMode && (
-        <div className="pointer-events-none absolute top-0 left-0 right-0 h-20 bg-gradient-to-b from-slate-950/60 via-slate-900/20 to-transparent z-[400]" />
+      {/* Subtle Horizon Sky Fade when in 3D Driving Perspective */}
+      {isNavigating && is3DMode && (
+        <div className="pointer-events-none absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-slate-900/35 via-slate-900/10 to-transparent z-[400]" />
       )}
     </div>
   );
