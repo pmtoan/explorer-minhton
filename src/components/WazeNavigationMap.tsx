@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import * as maplibregl from 'maplibre-gl';
+import L from 'leaflet';
 import { Plus, Minus } from 'lucide-react';
 
 export type MapLayerStyle = 'vector3d' | 'satellite';
@@ -23,373 +23,264 @@ interface WazeNavigationMapProps {
   onMapClickSelect?: (lat: number, lon: number) => void;
 }
 
-// OpenFreeMap Bright Vector Style: Crisp roads, upright labels at any rotation/pitch, natural Google Maps palette
-const VECTOR_STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
-
-function createGoogleSatelliteStyle(): maplibregl.StyleSpecification {
-  return {
-    version: 8,
-    sources: {
-      'google-sat': {
-        type: 'raster',
-        tiles: [
-          'https://mt0.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=vi',
-          'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=vi',
-          'https://mt2.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=vi',
-          'https://mt3.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=vi',
-        ],
-        tileSize: 256,
-        maxzoom: 20,
-      },
-    },
-    layers: [
-      {
-        id: 'google-sat-layer',
-        type: 'raster',
-        source: 'google-sat',
-        minzoom: 0,
-        maxzoom: 20,
-      },
-    ],
-  };
-}
-
 export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
   currentLocation,
   destination,
   routeCoordinates = [],
   traveledPoints = [],
   bearingDeg = 0,
-  is3DMode = true,
   isFollowing = true,
   isNavigating = false,
   mapStyle = 'vector3d',
   onUserDragMap,
   onMapClickSelect,
 }) => {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<maplibregl.Map | null>(null);
-  const vehicleMarkerRef = useRef<maplibregl.Marker | null>(null);
-  const destMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const routeLayerGroupRef = useRef<L.LayerGroup | null>(null);
+  const vehicleMarkerRef = useRef<L.Marker | null>(null);
+  const destinationMarkerRef = useRef<L.Marker | null>(null);
   const prevNavigatingRef = useRef<boolean>(false);
-  const prevStyleRef = useRef<MapLayerStyle>(mapStyle);
+  const lastFittedDestKeyRef = useRef<string>('');
 
-  // Store latest route & traveled coordinates in refs so WebGL event callbacks never use stale closures!
-  const routeCoordsRef = useRef<[number, number][]>(routeCoordinates);
-  routeCoordsRef.current = routeCoordinates;
+  // Keep latest callbacks in refs so Leaflet event listeners never go stale
+  const onUserDragRef = useRef(onUserDragMap);
+  onUserDragRef.current = onUserDragMap;
 
-  const traveledPtsRef = useRef<{ latitude: number; longitude: number }[]>(
-    traveledPoints
-  );
-  traveledPtsRef.current = traveledPoints;
+  const onMapClickRef = useRef(onMapClickSelect);
+  onMapClickRef.current = onMapClickSelect;
 
-  // Draw or update the Google Maps Electric Blue Route Line on the WebGL map
-  const drawRouteOnMap = () => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    if (!map.isStyleLoaded()) {
-      map.once('idle', () => drawRouteOnMap());
-      return;
-    }
-
-    const latestRoute = routeCoordsRef.current;
-    const geojsonCoords = latestRoute.map(([lat, lon]) => [lon, lat]);
-
-    const routeGeoJson: GeoJSON.Feature<GeoJSON.LineString> = {
-      type: 'Feature',
-      properties: {},
-      geometry: {
-        type: 'LineString',
-        coordinates: geojsonCoords,
-      },
-    };
-
-    try {
-      const existingRouteSource = map.getSource(
-        'gmaps-route-source'
-      ) as maplibregl.GeoJSONSource | undefined;
-
-      if (existingRouteSource) {
-        existingRouteSource.setData(routeGeoJson);
-      } else {
-        map.addSource('gmaps-route-source', {
-          type: 'geojson',
-          data: routeGeoJson,
-        });
-
-        // 1. Outer Road Casing Shadow (#1e1b4b / Dark Navy)
-        map.addLayer({
-          id: 'gmaps-route-casing',
-          type: 'line',
-          source: 'gmaps-route-source',
-          layout: {
-            'line-join': 'round',
-            'line-cap': 'round',
-          },
-          paint: {
-            'line-color': '#1e1b4b',
-            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 9, 18, 16],
-            'line-opacity': 0.95,
-          },
-        });
-
-        // 2. Inner Google Maps Vibrant Electric Blue (#3b3eff / #2962ff)
-        map.addLayer({
-          id: 'gmaps-route-core',
-          type: 'line',
-          source: 'gmaps-route-source',
-          layout: {
-            'line-join': 'round',
-            'line-cap': 'round',
-          },
-          paint: {
-            'line-color': '#3742fa',
-            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 5.5, 18, 10.5],
-            'line-opacity': 1,
-          },
-        });
-      }
-
-      // Traveled GPS Breadcrumb Trail
-      const latestTraveled = traveledPtsRef.current;
-      const traveledCoords = latestTraveled.map((p) => [
-        p.longitude,
-        p.latitude,
-      ]);
-      const traveledGeoJson: GeoJSON.Feature<GeoJSON.LineString> = {
-        type: 'Feature',
-        properties: {},
-        geometry: {
-          type: 'LineString',
-          coordinates: traveledCoords,
-        },
-      };
-
-      const existingTraveledSource = map.getSource(
-        'gmaps-traveled-source'
-      ) as maplibregl.GeoJSONSource | undefined;
-
-      if (existingTraveledSource) {
-        existingTraveledSource.setData(traveledGeoJson);
-      } else {
-        map.addSource('gmaps-traveled-source', {
-          type: 'geojson',
-          data: traveledGeoJson,
-        });
-
-        map.addLayer({
-          id: 'gmaps-traveled-line',
-          type: 'line',
-          source: 'gmaps-traveled-source',
-          layout: {
-            'line-join': 'round',
-            'line-cap': 'round',
-          },
-          paint: {
-            'line-color': '#64748b',
-            'line-width': 6,
-            'line-opacity': 0.8,
-          },
-        });
-      }
-    } catch {
-      // If style is mid-transition, retry on next idle frame
-      map.once('idle', () => drawRouteOnMap());
-    }
-  };
-
-  // 1. Initialize WebGL MapLibre GL Map once
+  // 1. Initialize Leaflet Map once (Pure native 2D/vector-rendered Google Maps tiles, zero CSS distortion)
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
+    if (!mapContainerRef.current || mapInstanceRef.current) return;
 
-    const initialStyle =
-      mapStyle === 'satellite' ? createGoogleSatelliteStyle() : VECTOR_STYLE_URL;
-
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: initialStyle,
-      center: [currentLocation.longitude, currentLocation.latitude],
-      zoom: isNavigating ? 16.8 : 14,
-      pitch: isNavigating && is3DMode ? 32 : 0,
-      bearing: isNavigating && is3DMode ? bearingDeg : 0,
-      maxPitch: 55,
+    const map = L.map(mapContainerRef.current, {
+      center: [currentLocation.latitude, currentLocation.longitude],
+      zoom: isNavigating ? 18 : 14,
+      zoomControl: false,
       attributionControl: false,
-      dragRotate: true,
-      touchPitch: true,
+      // Use SVG renderer with generous padding so polylines never clip while panning
+      renderer: L.svg({ padding: 1.0 }),
     });
 
-    map.on('dragstart', (e: any) => {
-      if (e.originalEvent && onUserDragMap) {
-        onUserDragMap();
+    const tileUrl =
+      mapStyle === 'satellite'
+        ? 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=vi'
+        : 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=vi';
+
+    tileLayerRef.current = L.tileLayer(tileUrl, {
+      maxZoom: 20,
+      subdomains: ['0', '1', '2', '3'],
+    }).addTo(map);
+
+    routeLayerGroupRef.current = L.layerGroup().addTo(map);
+
+    map.on('dragstart', () => {
+      if (onUserDragRef.current) {
+        onUserDragRef.current();
       }
     });
 
-    map.on('click', (e: maplibregl.MapMouseEvent) => {
-      if (onMapClickSelect) {
-        onMapClickSelect(e.lngLat.lat, e.lngLat.lng);
+    map.on('click', (e: L.LeafletMouseEvent) => {
+      if (onMapClickRef.current) {
+        onMapClickRef.current(e.latlng.lat, e.latlng.lng);
       }
     });
 
-    map.on('load', () => {
-      drawRouteOnMap();
-    });
+    mapInstanceRef.current = map;
 
-    map.on('styledata', () => {
-      drawRouteOnMap();
-    });
-
-    // Create Google Maps iOS Navigation Puck (Large translucent white circle + Blue Navigation Arrow)
-    const el = document.createElement('div');
-    el.style.width = '64px';
-    el.style.height = '64px';
-    el.style.display = 'flex';
-    el.style.alignItems = 'center';
-    el.style.justifyContent = 'center';
-    el.style.pointerEvents = 'none';
-
-    const puck = document.createElement('div');
-    puck.style.width = '54px';
-    puck.style.height = '54px';
-    puck.style.borderRadius = '9999px';
-    puck.style.background = 'rgba(255, 255, 255, 0.92)';
-    puck.style.boxShadow = '0 4px 18px rgba(0, 0, 0, 0.22)';
-    puck.style.border = '1.5px solid rgba(255, 255, 255, 0.95)';
-    puck.style.display = 'flex';
-    puck.style.alignItems = 'center';
-    puck.style.justifyContent = 'center';
-    puck.innerHTML = `
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-        <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z" fill="#1A73E8" stroke="#1557B0" stroke-width="1.2" stroke-linejoin="round"/>
-      </svg>
-    `;
-    el.appendChild(puck);
-
-    vehicleMarkerRef.current = new maplibregl.Marker({
-      element: el,
-      rotationAlignment: 'map',
-      pitchAlignment: 'map',
-    })
-      .setLngLat([currentLocation.longitude, currentLocation.latitude])
-      .addTo(map);
-
-    mapRef.current = map;
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 150);
 
     return () => {
+      clearTimeout(timer);
       map.remove();
-      mapRef.current = null;
+      mapInstanceRef.current = null;
     };
   }, []);
 
-  // 2. Switch Map Style ONLY when user explicitly changes mapStyle
+  // 2. Switch between Google Maps Standard Street ('m') and Google Hybrid Satellite ('y')
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || prevStyleRef.current === mapStyle) return;
-    prevStyleRef.current = mapStyle;
-
-    const nextStyle =
-      mapStyle === 'satellite' ? createGoogleSatelliteStyle() : VECTOR_STYLE_URL;
-
-    map.setStyle(nextStyle);
-    map.once('idle', () => drawRouteOnMap());
-  }, [mapStyle]);
-
-  // 3. Update Route Polyline & Destination Pin whenever routeCoordinates changes
-  useEffect(() => {
-    const map = mapRef.current;
+    const map = mapInstanceRef.current;
     if (!map) return;
 
-    drawRouteOnMap();
-
-    if (destination) {
-      if (!destMarkerRef.current) {
-        const destEl = document.createElement('div');
-        destEl.style.display = 'flex';
-        destEl.style.flexDirection = 'column';
-        destEl.style.alignItems = 'center';
-        destEl.style.transform = 'translateY(-14px)';
-        destEl.innerHTML = `
-          <div class="dest-label" style="background: #ffffff; color: #0f172a; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 8px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.25); border: 1.5px solid #ea4335; margin-bottom: 3px;">
-            🏁 ${destination.name.slice(0, 24)}
-          </div>
-          <div style="width: 26px; height: 26px; border-radius: 9999px; background: #ea4335; border: 3px solid #ffffff; box-shadow: 0 4px 10px rgba(234,67,53,0.5); display: flex; align-items: center; justify-content: center;">
-            <div style="width: 8px; height: 8px; border-radius: 9999px; background: #ffffff;"></div>
-          </div>
-        `;
-        destMarkerRef.current = new maplibregl.Marker({ element: destEl })
-          .setLngLat([destination.longitude, destination.latitude])
-          .addTo(map);
-      } else {
-        destMarkerRef.current.setLngLat([
-          destination.longitude,
-          destination.latitude,
-        ]);
-        const labelEl = destMarkerRef.current
-          .getElement()
-          .querySelector('.dest-label');
-        if (labelEl) {
-          labelEl.textContent = `🏁 ${destination.name.slice(0, 24)}`;
-        }
-      }
-    } else if (destMarkerRef.current) {
-      destMarkerRef.current.remove();
-      destMarkerRef.current = null;
+    if (tileLayerRef.current) {
+      tileLayerRef.current.remove();
     }
 
-    // In Overview Mode (Mode 1), fit bounds to show the entire blue route line
-    if (!isNavigating && routeCoordinates.length >= 2) {
-      const bounds = new maplibregl.LngLatBounds();
-      for (const [lat, lon] of routeCoordinates) {
-        bounds.extend([lon, lat]);
-      }
-      map.fitBounds(bounds, {
-        padding: { top: 120, bottom: 230, left: 50, right: 50 },
-        maxZoom: 15.5,
-        pitch: 0,
-        bearing: 0,
-        duration: 650,
+    const tileUrl =
+      mapStyle === 'satellite'
+        ? 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=vi'
+        : 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=vi';
+
+    tileLayerRef.current = L.tileLayer(tileUrl, {
+      maxZoom: 20,
+      subdomains: ['0', '1', '2', '3'],
+    }).addTo(map);
+  }, [mapStyle]);
+
+  // 3. Draw Google Maps Electric Blue Route Line & Destination Marker
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const routeGroup = routeLayerGroupRef.current;
+    if (!map || !routeGroup) return;
+
+    routeGroup.clearLayers();
+
+    // Determine active route points (use OSRM route if ready, or direct line if destination is selected)
+    const activeCoords: [number, number][] =
+      routeCoordinates && routeCoordinates.length >= 2
+        ? routeCoordinates
+        : destination
+        ? [
+            [currentLocation.latitude, currentLocation.longitude],
+            [destination.latitude, destination.longitude],
+          ]
+        : [];
+
+    if (activeCoords.length >= 2) {
+      // Layer 1: Outer Dark Navy Border Casing (#1e1b4b)
+      L.polyline(activeCoords, {
+        color: '#1e1b4b',
+        weight: 12,
+        opacity: 0.9,
+        lineCap: 'round',
+        lineJoin: 'round',
+        interactive: false,
+      }).addTo(routeGroup);
+
+      // Layer 2: Inner Google Maps Vibrant Electric Blue (#2962ff)
+      L.polyline(activeCoords, {
+        color: '#2962ff',
+        weight: 8,
+        opacity: 1,
+        lineCap: 'round',
+        lineJoin: 'round',
+        interactive: false,
+      }).addTo(routeGroup);
+
+      // Layer 3: Inner Direction Flow Highlight
+      L.polyline(activeCoords, {
+        color: '#93c5fd',
+        weight: 2.5,
+        opacity: 0.85,
+        dashArray: '6, 12',
+        lineCap: 'round',
+        interactive: false,
+      }).addTo(routeGroup);
+
+      // Origin White Dot
+      L.circleMarker(activeCoords[0], {
+        radius: 6,
+        fillColor: '#ffffff',
+        fillOpacity: 1,
+        color: '#1e1b4b',
+        weight: 3,
+        interactive: false,
+      }).addTo(routeGroup);
+    }
+
+    // Traveled GPS Breadcrumb Trail
+    if (traveledPoints && traveledPoints.length >= 2) {
+      const traveledLatLngs: [number, number][] = traveledPoints.map((p) => [
+        p.latitude,
+        p.longitude,
+      ]);
+      L.polyline(traveledLatLngs, {
+        color: '#64748b',
+        weight: 5,
+        opacity: 0.75,
+        dashArray: '5, 8',
+        interactive: false,
+      }).addTo(routeGroup);
+    }
+
+    // Destination Red Pin Marker
+    if (destination) {
+      const destHtml = `
+        <div style="display: flex; flex-direction: column; align-items: center; transform: translateY(-16px);">
+          <div style="background: #ffffff; color: #0f172a; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 8px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.25); border: 1.5px solid #ea4335; margin-bottom: 3px;">
+            🏁 ${destination.name.slice(0, 24)}
+          </div>
+          <div style="width: 28px; height: 28px; border-radius: 9999px; background: #ea4335; border: 3px solid #ffffff; box-shadow: 0 4px 10px rgba(234,67,53,0.5); display: flex; align-items: center; justify-content: center;">
+            <div style="width: 8px; height: 8px; border-radius: 9999px; background: #ffffff;"></div>
+          </div>
+        </div>
+      `;
+
+      const destIcon = L.divIcon({
+        html: destHtml,
+        className: 'gmaps-dest-pin',
+        iconSize: [150, 54],
+        iconAnchor: [75, 44],
       });
+
+      if (!destinationMarkerRef.current) {
+        destinationMarkerRef.current = L.marker(
+          [destination.latitude, destination.longitude],
+          { icon: destIcon, zIndexOffset: 900 }
+        ).addTo(map);
+      } else {
+        destinationMarkerRef.current.setLatLng([
+          destination.latitude,
+          destination.longitude,
+        ]);
+        destinationMarkerRef.current.setIcon(destIcon);
+      }
+
+      // In Mode 1 (Overview Mode), automatically frame the full route when a new destination/route loads
+      const destKey = `${destination.latitude.toFixed(4)},${destination.longitude.toFixed(4)}-${activeCoords.length}`;
+      if (!isNavigating && activeCoords.length >= 2 && lastFittedDestKeyRef.current !== destKey) {
+        lastFittedDestKeyRef.current = destKey;
+        const bounds = L.latLngBounds(activeCoords);
+        map.fitBounds(bounds, {
+          paddingTopLeft: [35, 130],
+          paddingBottomRight: [35, 220],
+          maxZoom: 16,
+          animate: true,
+        });
+      }
+    } else if (destinationMarkerRef.current) {
+      destinationMarkerRef.current.remove();
+      destinationMarkerRef.current = null;
+      lastFittedDestKeyRef.current = '';
     }
   }, [destination, routeCoordinates, traveledPoints, isNavigating]);
 
   // 4. Transition between Mode 1 (Overview) and Mode 2 (Google Maps Driving Mode)
   useEffect(() => {
-    const map = mapRef.current;
+    const map = mapInstanceRef.current;
     if (!map) return;
 
-    drawRouteOnMap();
+    map.invalidateSize();
 
     if (isNavigating && !prevNavigatingRef.current) {
-      // Natural Google Maps driving perspective (gentle 32° tilt, upright vector labels, zoom 16.8)
-      map.easeTo({
-        center: [currentLocation.longitude, currentLocation.latitude],
-        zoom: 16.8,
-        pitch: is3DMode ? 32 : 0,
-        bearing: is3DMode ? bearingDeg : 0,
-        offset: [0, 95],
-        duration: 850,
+      // Smoothly zoom in to street-level driving view (zoom 18) centered on the vehicle
+      map.flyTo([currentLocation.latitude, currentLocation.longitude], 18, {
+        animate: true,
+        duration: 0.85,
       });
     } else if (!isNavigating && prevNavigatingRef.current) {
-      if (routeCoordinates.length >= 2) {
-        const bounds = new maplibregl.LngLatBounds();
-        for (const [lat, lon] of routeCoordinates) {
-          bounds.extend([lon, lat]);
-        }
+      // Zoom back out to show the entire route overview
+      const activeCoords: [number, number][] =
+        routeCoordinates && routeCoordinates.length >= 2
+          ? routeCoordinates
+          : destination
+          ? [
+              [currentLocation.latitude, currentLocation.longitude],
+              [destination.latitude, destination.longitude],
+            ]
+          : [];
+
+      if (activeCoords.length >= 2) {
+        const bounds = L.latLngBounds(activeCoords);
         map.fitBounds(bounds, {
-          padding: { top: 120, bottom: 230, left: 50, right: 50 },
-          maxZoom: 15.5,
-          pitch: 0,
-          bearing: 0,
-          duration: 750,
-        });
-      } else {
-        map.easeTo({
-          center: [currentLocation.longitude, currentLocation.latitude],
-          zoom: 14,
-          pitch: 0,
-          bearing: 0,
-          offset: [0, 0],
-          duration: 650,
+          paddingTopLeft: [35, 130],
+          paddingBottomRight: [35, 220],
+          maxZoom: 16,
+          animate: true,
         });
       }
     }
@@ -397,38 +288,47 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     prevNavigatingRef.current = isNavigating;
   }, [isNavigating]);
 
-  // 5. Update Vehicle Position, Heading Rotation & Camera Follow
+  // 5. Update Vehicle Navigation Arrow Puck & Smooth Camera Tracking
   useEffect(() => {
-    const map = mapRef.current;
+    const map = mapInstanceRef.current;
     if (!map) return;
 
-    if (vehicleMarkerRef.current) {
-      vehicleMarkerRef.current.setLngLat([
-        currentLocation.longitude,
+    // Google Maps iOS translucent white circle with rotating Blue Navigation Arrow
+    const vehicleHtml = `
+      <div style="position: relative; width: 64px; height: 64px; display: flex; align-items: center; justify-content: center;">
+        <div style="width: 52px; height: 52px; border-radius: 9999px; background: rgba(255, 255, 255, 0.92); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25); border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; transform: rotate(${bearingDeg}deg); transition: transform 0.25s ease-out;">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z" fill="#1A73E8" stroke="#1557B0" stroke-width="1.2" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+    `;
+
+    const icon = L.divIcon({
+      html: vehicleHtml,
+      className: 'gmaps-vehicle-puck',
+      iconSize: [64, 64],
+      iconAnchor: [32, 32],
+    });
+
+    if (!vehicleMarkerRef.current) {
+      vehicleMarkerRef.current = L.marker(
+        [currentLocation.latitude, currentLocation.longitude],
+        { icon, zIndexOffset: 1000 }
+      ).addTo(map);
+    } else {
+      vehicleMarkerRef.current.setLatLng([
         currentLocation.latitude,
+        currentLocation.longitude,
       ]);
-      vehicleMarkerRef.current.setRotation(bearingDeg);
+      vehicleMarkerRef.current.setIcon(icon);
     }
 
-    if (isFollowing) {
-      if (isNavigating) {
-        map.easeTo({
-          center: [currentLocation.longitude, currentLocation.latitude],
-          zoom: map.getZoom() < 15.8 ? 16.8 : map.getZoom(),
-          pitch: is3DMode ? 32 : 0,
-          bearing: is3DMode ? bearingDeg : 0,
-          offset: [0, 95],
-          duration: 350,
-        });
-      } else if (!destination) {
-        map.easeTo({
-          center: [currentLocation.longitude, currentLocation.latitude],
-          pitch: 0,
-          bearing: 0,
-          offset: [0, 0],
-          duration: 350,
-        });
-      }
+    if (isFollowing && isNavigating) {
+      map.panTo([currentLocation.latitude, currentLocation.longitude], {
+        animate: true,
+        duration: 0.3,
+      });
     }
   }, [
     currentLocation.latitude,
@@ -436,20 +336,20 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
     bearingDeg,
     isFollowing,
     isNavigating,
-    is3DMode,
   ]);
 
   const handleZoomIn = () => {
-    mapRef.current?.zoomIn({ duration: 220 });
+    mapInstanceRef.current?.zoomIn();
   };
 
   const handleZoomOut = () => {
-    mapRef.current?.zoomOut({ duration: 220 });
+    mapInstanceRef.current?.zoomOut();
   };
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-[#f8f9fa] select-none">
-      <div ref={containerRef} className="w-full h-full" />
+    <div className="relative w-full h-full overflow-hidden bg-[#e5e3df] select-none">
+      {/* Native Google Maps Vietnam Tile Canvas (Zero CSS distortion, 100% natural pan & zoom) */}
+      <div ref={mapContainerRef} className="w-full h-full" />
 
       {/* Zoom In / Zoom Out Controls (+ / -) */}
       <div
