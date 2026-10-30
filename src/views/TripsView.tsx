@@ -6,6 +6,7 @@ import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { LiveTripModal } from '../components/LiveTripModal';
 import { FinishTripModal } from '../components/FinishTripModal';
 import { TripHistoryCard } from '../components/TripHistoryCard';
+import { StandaloneNavigationView } from '../components/StandaloneNavigationView';
 import { Compass, Sparkles } from 'lucide-react';
 
 export const TripsView: React.FC = () => {
@@ -13,6 +14,7 @@ export const TripsView: React.FC = () => {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [showLiveModal, setShowLiveModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState(false);
+  const [showStandaloneNav, setShowStandaloneNav] = useState(false);
 
   useEffect(() => {
     // Load historical trips
@@ -80,6 +82,7 @@ export const TripsView: React.FC = () => {
         <ActiveTripBanner
           activeTrip={activeTrip}
           onOpenDetails={() => setShowLiveModal(true)}
+          onOpenNavigation={() => setShowStandaloneNav(true)}
         />
       )}
 
@@ -112,11 +115,23 @@ export const TripsView: React.FC = () => {
         )}
       </div>
 
+      {/* FULLSCREEN STANDALONE WAZE NAVIGATION & SEARCH VIEW */}
+      {showStandaloneNav && activeTrip && (
+        <StandaloneNavigationView
+          activeTrip={activeTrip}
+          onClose={() => setShowStandaloneNav(false)}
+        />
+      )}
+
       {/* MODAL 1: LIVE TRIP COCKPIT */}
       {showLiveModal && activeTrip && (
         <LiveTripModal
           activeTrip={activeTrip}
           onClose={() => setShowLiveModal(false)}
+          onOpenStandaloneNav={() => {
+            setShowLiveModal(false);
+            setShowStandaloneNav(true);
+          }}
           onOpenFinishModal={() => {
             setShowLiveModal(false);
             setShowFinishModal(true);

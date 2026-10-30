@@ -6,11 +6,13 @@ import { Pause, Play, ChevronRight, Navigation } from 'lucide-react';
 interface ActiveTripBannerProps {
   activeTrip: ActiveTrip;
   onOpenDetails: () => void;
+  onOpenNavigation?: () => void;
 }
 
 export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
   activeTrip,
   onOpenDetails,
+  onOpenNavigation,
 }) => {
   const isPaused = activeTrip.status === 'paused';
   const checkpointCount = activeTrip.route.checkpoints.length;
@@ -130,9 +132,21 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
           <span className="flex items-center gap-1 font-bold">
             <span>Quãng đường</span>
           </span>
-          <span className="inline-flex items-center gap-1 text-xs font-bold bg-white/20 px-2.5 py-0.5 rounded-lg text-white">
-            Bản đồ & Dẫn đường <ChevronRight className="w-3.5 h-3.5" />
-          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onOpenNavigation) {
+                onOpenNavigation();
+              } else {
+                onOpenDetails();
+              }
+            }}
+            className="inline-flex items-center gap-1 text-xs font-extrabold bg-white/25 hover:bg-white/35 px-2.5 py-1 rounded-xl text-white transition-colors shadow-xs"
+          >
+            <span>Bản đồ & Dẫn đường</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
         </div>
 
         <div className="flex items-baseline justify-between mt-1">
@@ -188,6 +202,20 @@ export const ActiveTripBanner: React.FC<ActiveTripBannerProps> = ({
             </>
           )}
         </button>
+
+        {onOpenNavigation && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenNavigation();
+            }}
+            className="flex-1 py-2.5 px-3.5 rounded-2xl font-extrabold text-xs flex items-center justify-center gap-1.5 bg-slate-900/90 hover:bg-slate-950 text-emerald-300 border border-white/20 transition-transform active:scale-95 shadow-sm"
+          >
+            <Navigation className="w-4 h-4" />
+            <span>Bản đồ & Dẫn đường</span>
+          </button>
+        )}
       </div>
     </div>
   );

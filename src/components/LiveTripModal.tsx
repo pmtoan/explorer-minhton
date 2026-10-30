@@ -9,12 +9,14 @@ interface LiveTripModalProps {
   activeTrip: ActiveTrip;
   onClose: () => void;
   onOpenFinishModal: () => void;
+  onOpenStandaloneNav?: () => void;
 }
 
 export const LiveTripModal: React.FC<LiveTripModalProps> = ({
   activeTrip,
   onClose,
   onOpenFinishModal,
+  onOpenStandaloneNav,
 }) => {
   const [tab, setTab] = useState<'cockpit' | 'checkpoints'>('cockpit');
   const [isCheckingIn, setIsCheckingIn] = useState(false);
@@ -127,6 +129,26 @@ export const LiveTripModal: React.FC<LiveTripModalProps> = ({
 
         {/* Modal Scrollable Body */}
         <div className="p-4 space-y-4 overflow-y-auto">
+          {onOpenStandaloneNav && (
+            <button
+              onClick={onOpenStandaloneNav}
+              className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs flex items-center justify-between shadow-lg shadow-emerald-500/20 transition-all active:scale-95"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base">🗺️</span>
+                <div className="text-left">
+                  <div className="font-black text-sm">Bản đồ & Dẫn đường Waze 3D</div>
+                  <div className="text-[11px] text-emerald-100 font-medium">
+                    Tìm kiếm địa điểm thực tế & chỉ đường từng ngã rẽ
+                  </div>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-xl bg-white/20 text-[11px] font-black">
+                Mở ngay →
+              </span>
+            </button>
+          )}
+
           {tab === 'cockpit' ? (
             <LiveNavigationCockpit activeTrip={activeTrip} />
           ) : (
