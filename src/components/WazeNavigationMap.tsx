@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 
+export type MapLayerStyle = 'street' | 'satellite';
+
 interface WazeNavigationMapProps {
   currentLocation: { latitude: number; longitude: number };
   destination?: {
@@ -14,6 +16,7 @@ interface WazeNavigationMapProps {
   bearingDeg?: number;
   is3DMode?: boolean;
   isFollowing?: boolean;
+  mapStyle?: MapLayerStyle;
   onUserDragMap?: () => void;
   onMapClickSelect?: (lat: number, lon: number) => void;
 }
@@ -26,11 +29,13 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
   bearingDeg = 0,
   is3DMode = true,
   isFollowing = true,
+  mapStyle = 'street',
   onUserDragMap,
   onMapClickSelect,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const vehicleMarkerRef = useRef<L.Marker | null>(null);
   const destinationMarkerRef = useRef<L.Marker | null>(null);
   const routeGlowLineRef = useRef<L.Polyline | null>(null);
@@ -48,14 +53,16 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
       attributionControl: false,
     });
 
-    // High-contrast dark cockpit map tiles (CartoDB Dark Matter / Voyager fallback)
-    L.tileLayer(
-      'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-      {
-        maxZoom: 19,
-        subdomains: 'abcd',
-      }
-    ).addTo(map);
+    // Use Google Maps Vietnam Street Tiles (No API Key watermark, full VN POIs & street names)
+    const tileUrl =
+      mapStyle === 'satellite'
+        ? 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=vi'
+        : 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=vi';
+
+    tileLayerRef.current = L.tileLayer(tileUrl, {
+      maxZoom: 20,
+      subdomains: ['0', '1', '2', '3'],
+    }).addTo(map);
 
     map.on('dragstart', () => {
       if (onUserDragMap) {
@@ -81,6 +88,26 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
       mapInstanceRef.current = null;
     };
   }, []);
+
+  // Switch between Street Map and Hybrid Satellite Map
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (tileLayerRef.current) {
+      tileLayerRef.current.remove();
+    }
+
+    const tileUrl =
+      mapStyle === 'satellite'
+        ? 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=vi'
+        : 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=vi';
+
+    tileLayerRef.current = L.tileLayer(tileUrl, {
+      maxZoom: 20,
+      subdomains: ['0', '1', '2', '3'],
+    }).addTo(map);
+  }, [mapStyle]);
 
   // Update Vehicle Marker & Camera Follow
   useEffect(() => {
@@ -178,7 +205,7 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
         routeGlowLineRef.current = L.polyline(routeCoordinates, {
           color: '#06b6d4',
           weight: 12,
-          opacity: 0.35,
+          opacity: 0.4,
           lineCap: 'round',
           lineJoin: 'round',
         }).addTo(map);
@@ -218,7 +245,7 @@ export const WazeNavigationMap: React.FC<WazeNavigationMapProps> = ({
         traveledLineRef.current = L.polyline(latlngs, {
           color: '#6366f1',
           weight: 4,
-          opacity: 0.75,
+          opacity: 0.85,
           dashArray: '6, 8',
         }).addTo(map);
       } else {

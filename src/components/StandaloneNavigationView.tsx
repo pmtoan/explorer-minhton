@@ -8,7 +8,7 @@ import {
   LiveNavigationProgress,
   ManeuverIconType,
 } from '../services/navigationRoutingService';
-import { WazeNavigationMap } from './WazeNavigationMap';
+import { WazeNavigationMap, MapLayerStyle } from './WazeNavigationMap';
 import { SEED_CAFES } from '../data/seedCafes';
 import { storageService } from '../services/storageService';
 import {
@@ -28,6 +28,7 @@ import {
   Flag,
   Loader2,
   LocateFixed,
+  Layers,
 } from 'lucide-react';
 
 interface StandaloneNavigationViewProps {
@@ -86,6 +87,7 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [is3DMode, setIs3DMode] = useState(true);
   const [isFollowingVehicle, setIsFollowingVehicle] = useState(true);
+  const [mapStyle, setMapStyle] = useState<MapLayerStyle>('street');
 
   const currentLocation = activeTrip.currentLocation || {
     latitude: 10.7769,
@@ -555,6 +557,7 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
           bearingDeg={liveProgress?.bearingDeg || 0}
           is3DMode={is3DMode}
           isFollowing={isFollowingVehicle}
+          mapStyle={mapStyle}
           onUserDragMap={() => setIsFollowingVehicle(false)}
         />
       </div>
@@ -585,7 +588,7 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
         </div>
       </div>
 
-      {/* 4. RIGHT FLOATING MAP CONTROLS (RECENTER & 2D/3D) */}
+      {/* 4. RIGHT FLOATING MAP CONTROLS (RECENTER, SATELLITE & 2D/3D) */}
       <div className="absolute bottom-28 right-4 z-[500] flex flex-col gap-2.5">
         <button
           onClick={() => setIsFollowingVehicle(true)}
@@ -597,6 +600,20 @@ export const StandaloneNavigationView: React.FC<StandaloneNavigationViewProps> =
           title="Tái định vị theo xe"
         >
           <LocateFixed className="w-5 h-5" />
+        </button>
+
+        <button
+          onClick={() =>
+            setMapStyle(mapStyle === 'street' ? 'satellite' : 'street')
+          }
+          className={`w-11 h-11 rounded-2xl backdrop-blur-md border shadow-xl flex items-center justify-center transition-all active:scale-90 ${
+            mapStyle === 'satellite'
+              ? 'bg-emerald-500 text-white border-emerald-300'
+              : 'bg-slate-900/95 border-slate-700 text-slate-200'
+          }`}
+          title="Chuyển đổi Bản đồ / Vệ tinh"
+        >
+          <Layers className="w-5 h-5" />
         </button>
 
         <button
